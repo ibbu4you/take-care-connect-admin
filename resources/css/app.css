@@ -1,0 +1,416 @@
+/*
+ |----------------------------------------------------------------------
+ | DM Sans — self-hosted
+ |----------------------------------------------------------------------
+ | Files come from the @fontsource/dm-sans npm package and are copied into
+ | public/fonts/dm-sans by scripts/publish-fonts.mjs. Declared by hand rather
+ | than imported from the package so the URLs stay stable and can be
+ | <link rel="preload">-ed from app.blade.php.
+ |
+ | Hosted from this app's own public/ rather than borrowed from
+ | takecareconnect.com: the admin must not go unstyled because the public site
+ | is down or mid-deploy.
+ |
+ | DM Sans is the ONLY font family this app loads.
+ */
+@font-face {
+    font-family: 'DM Sans';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/fonts/dm-sans/dm-sans-latin-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'DM Sans';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/fonts/dm-sans/dm-sans-latin-500-normal.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'DM Sans';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('/fonts/dm-sans/dm-sans-latin-700-normal.woff2') format('woff2');
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    /*
+     | Take Care Connect Admin theme tokens.
+     |
+     | Stored as bare HSL channel values so Tailwind can compose them with
+     | opacity modifiers (bg-primary/10, bg-stage-won/15). Hex equivalents are
+     | noted for reference only — never paste a hex into a component.
+     */
+    :root {
+        /* ── Inherited verbatim from takecareconnect.com — do not drift ───── */
+        --background: 0 0% 100%; /* #FFFFFF */
+        --foreground: 229.3 35% 15.7%; /* #1A1F36 body text */
+        --surface: 220.1 42.9% 97.3%; /* #F5F7FB */
+
+        --primary: 229.4 56.1% 35.7%; /* #283A8E logo navy */
+        --primary-dark: 229.1 56.2% 26.9%; /* #1E2C6B hover */
+        --primary-foreground: 0 0% 100%;
+
+        --accent: 355.5 77.6% 56.3%; /* #E63946 */
+        --accent-dark: 355.5 65% 46%;
+        --accent-foreground: 0 0% 100%;
+
+        --success: 156 62% 28%; /* #1B7350 */
+        --success-foreground: 0 0% 100%;
+
+        --muted: 220.1 42.9% 97.3%;
+        --muted-foreground: 226 14.3% 41.2%; /* #5A6178 */
+
+        --card: 0 0% 100%;
+        --card-foreground: 229.3 35% 15.7%;
+
+        --popover: 0 0% 100%;
+        --popover-foreground: 229.3 35% 15.7%;
+
+        --destructive: 355.5 77.6% 56.3%;
+        --destructive-foreground: 0 0% 100%;
+
+        --border: 220 28.6% 91.8%;
+        --input: 220 28.6% 91.8%;
+        --ring: 229.4 56.1% 35.7%;
+
+        --radius: 0.75rem; /* rounded-xl cards, as on the site */
+
+        /* ── Admin-only additions ────────────────────────────────────────── */
+
+        /*
+         | The workspace canvas.
+         |
+         | The public site is white-on-white because it is a document; an admin
+         | is a desk, and a card needs something to sit on. Deliberately the
+         | same value as --surface so the two can never drift apart.
+         */
+        --app: 220.1 42.9% 97.3%; /* #F5F7FB */
+
+        /*
+         | The scrim behind a modal.
+         |
+         | Its own token because the obvious shortcut — `bg-foreground/40` — is
+         | a trap: --foreground is dark navy in the light theme and near-white
+         | in the dark one, so the same class paints a sensible dim over a light
+         | page and a *white* wash over a dark one. A scrim is always dark; it
+         | is not text, and it should not follow the text colour.
+         |
+         | Near-black with a trace of the brand blue, so it reads as a shadow
+         | rather than as grey paint.
+         */
+        --overlay: 226 30% 6%;
+
+        /*
+         | The sidebar is a light rail, not a dark one.
+         |
+         | White against the --app canvas, separated by a hairline rather than by
+         | contrast. The active item is a soft brand-tinted pill with navy text —
+         | so the only saturated colour in the whole rail is the row you are on,
+         | which is exactly where the eye should go. A dark rail would put a
+         | permanent block of high-contrast colour beside every screen and make
+         | the brand navy compete with itself.
+         */
+        --sidebar: 0 0% 100%;
+        --sidebar-deep: 220.1 42.9% 97.3%; /* nav-group wells, hover surfaces */
+        --sidebar-foreground: 224 21% 28%; /* #384056 resting item */
+        --sidebar-heading: 229.3 35% 15.7%; /* the product name */
+        --sidebar-section: 226 14% 52%; /* the uppercase section captions */
+        --sidebar-hover: 220 43% 97%;
+        --sidebar-active: 219 100% 96%; /* #E8F0FF soft brand tint */
+        --sidebar-active-foreground: 229.4 56.1% 35.7%; /* = --primary */
+        --sidebar-border: 219 33% 94%;
+
+        /*
+         | Amber.
+         |
+         | The site has no such token: success is green, destructive is the
+         | brand red, everything else is grey. Without it "overdue", "pending
+         | review" and "awaiting approval" would all have to borrow the error
+         | colour — which reads as a fault rather than a wait, and this app is
+         | mostly a queue of things that are waiting. Dark enough to pass AA as
+         | text on --card.
+         */
+        --warning: 32 94% 38%; /* #BC6907 */
+        --warning-foreground: 0 0% 100%;
+        --warning-soft: 38 92% 95%;
+
+        /*
+         | Informational only. Deliberately NOT --primary, so an info chip can
+         | never be mistaken for a primary action.
+         */
+        --info: 205 82% 38%;
+        --info-foreground: 0 0% 100%;
+
+        /*
+         | Sales pipeline.
+         |
+         | One hue ramp cooling toward the brand navy, so a card moving right
+         | visibly warms towards the brand colour. Won and lost break out of the
+         | ramp on purpose: they are outcomes, not progress.
+         */
+        --stage-intake: 220 14% 62%;
+        --stage-cold: 213 82% 68%;
+        --stage-warm: 217 84% 60%;
+        --stage-qualified: 221 75% 50%;
+        --stage-proposal: 229.4 56.1% 35.7%; /* = --primary */
+        --stage-won: 156 62% 28%; /* = --success */
+        --stage-lost: 355.5 77.6% 56.3%; /* = --destructive */
+
+        /*
+         | Interview and article workflow.
+         |
+         | A different hue family (violet → teal) from the pipeline ramp above,
+         | so a status chip is never ambiguous about which workflow it belongs
+         | to. --stage-pending-review is --warning by definition: it is the same
+         | state as ContentStatus::PendingReview on the public site.
+         */
+        --stage-scheduled: 220 14% 62%;
+        --stage-rescheduled: 220 14% 52%;
+        --stage-conducted: 262 60% 55%;
+        --stage-handed-over: 199 78% 42%;
+        --stage-in-content: 250 55% 52%;
+        --stage-assigned: 220 14% 62%;
+        --stage-drafting: 250 55% 52%;
+        --stage-internal-review: 32 94% 38%;
+        --stage-revisions: 24 85% 45%;
+        --stage-draft: 220 14% 62%;
+        --stage-pending-review: 32 94% 38%; /* = --warning */
+        --stage-published: 174 68% 27%;
+        --stage-cancelled: 226 14.3% 41.2%;
+        --stage-no-show: 226 14.3% 41.2%;
+
+        /* Creative deliverables. */
+        --stage-pending: 220 14% 62%;
+        --stage-in-progress: 250 55% 52%;
+        --stage-review: 32 94% 38%;
+        --stage-approved: 156 62% 28%;
+        --stage-rejected: 355.5 77.6% 56.3%;
+
+        /* Chart series, in brand order. All AA against --card. */
+        --chart-1: 229.4 56.1% 35.7%;
+        --chart-2: 199 78% 42%;
+        --chart-3: 156 62% 28%;
+        --chart-4: 32 94% 38%;
+        --chart-5: 262 60% 55%;
+        --chart-6: 355.5 77.6% 56.3%;
+
+        /*
+         | Controls.
+         |
+         | --radius is 0.75rem because the site's cards are rounded-xl, and
+         | cards here keep it. Inputs, buttons and table chips do not: at 12px a
+         | dense row of controls reads as a row of bubbles.
+         */
+        --radius-control: 0.5rem;
+
+        color-scheme: light;
+    }
+
+    /*
+     | Dark theme.
+     |
+     | Applied by putting .dark on <html> — see resources/js/lib/theme.ts.
+     |
+     | The brand navy (#283A8E) is far too dark to sit on a dark surface, so
+     | --primary lifts to a brighter tint of the SAME 229° hue rather than
+     | switching to a different colour: the brand still reads as itself, just
+     | turned up. Every stage colour is lifted the same way and no hue moves, so
+     | a chip means exactly the same thing in either theme.
+     |
+     | Only tokens are redefined here. If a component needed a `dark:` variant
+     | to look right, that component has a hard-coded colour in it and the bug
+     | is there, not here.
+     */
+    .dark {
+        --background: 229 45% 8%;
+        --foreground: 220 43% 94%;
+        --surface: 226 40% 13%;
+        --app: 229 45% 7%;
+
+        /* Same scrim, a touch stronger: it has less to darken. */
+        --overlay: 229 50% 3%;
+
+        --primary: 229 66% 64%;
+        --primary-dark: 229 66% 72%;
+        --primary-foreground: 229 45% 10%;
+
+        --accent: 355.5 80% 64%;
+        --accent-dark: 355.5 70% 56%;
+        --accent-foreground: 229 45% 10%;
+
+        --success: 156 52% 48%;
+        --success-foreground: 229 45% 10%;
+
+        --warning: 38 92% 58%;
+        --warning-foreground: 229 45% 10%;
+        --warning-soft: 32 40% 18%;
+
+        --info: 205 78% 58%;
+        --info-foreground: 229 45% 10%;
+
+        --muted: 226 38% 14%;
+        --muted-foreground: 220 18% 68%;
+
+        --card: 226 42% 11%;
+        --card-foreground: 220 43% 94%;
+
+        --popover: 226 42% 13%;
+        --popover-foreground: 220 43% 94%;
+
+        --destructive: 355.5 80% 64%;
+        --destructive-foreground: 229 45% 10%;
+
+        --border: 226 30% 20%;
+        --input: 226 30% 20%;
+        --ring: 229 66% 64%;
+
+        --sidebar: 226 44% 10%;
+        --sidebar-deep: 229 45% 8%;
+        --sidebar-foreground: 220 20% 76%;
+        --sidebar-heading: 0 0% 100%;
+        --sidebar-section: 220 14% 56%;
+        --sidebar-hover: 226 38% 16%;
+        --sidebar-active: 229 48% 22%;
+        --sidebar-active-foreground: 229 80% 80%;
+        --sidebar-border: 226 30% 18%;
+
+        --stage-intake: 220 14% 60%;
+        --stage-cold: 213 82% 70%;
+        --stage-warm: 217 84% 66%;
+        --stage-qualified: 221 78% 64%;
+        --stage-proposal: 229 66% 64%;
+        --stage-won: 156 52% 48%;
+        --stage-lost: 355.5 80% 64%;
+
+        --stage-scheduled: 220 14% 60%;
+        --stage-rescheduled: 220 14% 54%;
+        --stage-conducted: 262 66% 68%;
+        --stage-handed-over: 199 74% 58%;
+        --stage-in-content: 250 62% 68%;
+        --stage-assigned: 220 14% 60%;
+        --stage-drafting: 250 62% 68%;
+        --stage-internal-review: 38 92% 58%;
+        --stage-revisions: 24 85% 60%;
+        --stage-draft: 220 14% 60%;
+        --stage-pending-review: 38 92% 58%;
+        --stage-published: 174 55% 46%;
+        --stage-cancelled: 220 18% 60%;
+        --stage-no-show: 220 18% 60%;
+
+        --stage-pending: 220 14% 60%;
+        --stage-in-progress: 250 62% 68%;
+        --stage-review: 38 92% 58%;
+        --stage-approved: 156 52% 48%;
+        --stage-rejected: 355.5 80% 64%;
+
+        --chart-1: 229 66% 64%;
+        --chart-2: 199 74% 58%;
+        --chart-3: 156 52% 48%;
+        --chart-4: 38 92% 58%;
+        --chart-5: 262 66% 68%;
+        --chart-6: 355.5 80% 64%;
+
+        color-scheme: dark;
+    }
+
+    * {
+        @apply border-border;
+    }
+
+    html {
+        -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+        @apply bg-app font-sans text-foreground antialiased;
+        text-rendering: optimizeLegibility;
+    }
+
+    /*
+     | Headings inherit their colour rather than pinning it, exactly as on the
+     | public site — otherwise a heading placed on the dark sidebar renders navy
+     | on navy unless every author remembers to override it.
+     */
+    h1,
+    h2,
+    h3,
+    h4 {
+        @apply font-bold tracking-tight;
+        text-wrap: balance;
+    }
+
+    /* Visible keyboard focus everywhere. */
+    :focus-visible {
+        @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+        }
+    }
+}
+
+@layer components {
+    /* Skip link for keyboard and screen-reader users, revealed on focus. */
+    .skip-link {
+        @apply sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-control focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground;
+    }
+
+    /*
+     | A scrollbar that does not shout.
+     |
+     | The default one on Windows is a 17px light-grey trough with a hard edge,
+     | and inside a white sidebar it reads as a structural divider rather than a
+     | control — a grey bar down the middle of the navigation. Thinning it to
+     | 6px and dropping the track leaves the thumb as the only visible part, and
+     | only while there is something to scroll.
+     |
+     | Firefox gets the two standard properties; everything else gets the
+     | -webkit rules. Both are needed: neither covers every browser alone.
+     */
+    .scrollbar-slim {
+        scrollbar-width: thin;
+        scrollbar-color: hsl(var(--border)) transparent;
+    }
+
+    .scrollbar-slim::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+
+    .scrollbar-slim::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .scrollbar-slim::-webkit-scrollbar-thumb {
+        background-color: hsl(var(--border));
+        border-radius: 9999px;
+    }
+
+    .scrollbar-slim::-webkit-scrollbar-thumb:hover {
+        background-color: hsl(var(--muted-foreground) / 0.45);
+    }
+
+    /*
+     | Lining, fixed-width digits for anything that stacks in a column: money,
+     | counts, dates in a table. Without it a column of figures ripples.
+     */
+    .tabular {
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: 'tnum';
+    }
+}

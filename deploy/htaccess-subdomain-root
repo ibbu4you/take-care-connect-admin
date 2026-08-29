@@ -1,0 +1,31 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Fallback only.
+#
+#  Use this ONLY if the subdomain's document root cannot be pointed at the
+#  application's `public/` directory. Setting the document root properly is
+#  always better: this file works, but it leaves the application root inside
+#  the web root, one .htaccess mistake away from serving .env over HTTP.
+#
+#  Place this as `.htaccess` in the subdomain root — the directory that
+#  contains `app/`, `public/`, `vendor/` and `.env`.
+# ─────────────────────────────────────────────────────────────────────────────
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Everything is served from public/, and nothing outside it is reachable.
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+# Belt and braces: even if the rewrite above is bypassed, these never leave.
+<FilesMatch "^\.env|^\.env\..*|composer\.(json|lock)|package(-lock)?\.json|artisan$">
+    Require all denied
+</FilesMatch>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(app|bootstrap|config|database|resources|routes|storage|tests|vendor|scripts|deploy)/ - [F,L]
+</IfModule>
+
+Options -Indexes

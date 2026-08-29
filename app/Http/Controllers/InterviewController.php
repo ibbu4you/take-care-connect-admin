@@ -1,0 +1,564 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Http\Requests\ConductInterviewRequest;
+use App\Http\Requests\StoreInterviewRequest;
+use App\Models\Client;
+use App\Models\Deliverable;
+use App\Models\Interview;
+use App\Models\Project;
+use App\Models\User;
+use App\Services\CodeGenerator;
+use App\Services\HandoverService;
+use App\Services\StageMachine;
+use App\Support\Notifier;
+use App\Support\Roles;
+use App\Support\Scope;
+use App\Support\Workflow\DeliverableKind;
+use App\Support\Workflow\InterviewKind;
+use App\Support\Workflow\InterviewStage;
+use App\Support\Workflow\ProjectStatus;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class InterviewController extends Controller
+{
+    public function __construct(
+        private readonly StageMachine $stages,
+        private readonly HandoverService $handovers,
+        private readonly CodeGenerator $codes,
+    ) {}
+
+    public function index(Request $request): Response
+    {
+        $this->authorize('viewAny', Interview::class);
+
+        $filters = [
+            'search' => trim((string) $request->query('search', '')),
+            'kind' => (string) $request->query('kind', ''),
+            'stage' => (string) $request->query('stage', ''),
+            'anchor' => (string) $request->query('anchor', ''),
+            'mine' => $request->boolean('mine'),
+        ];
+
+        $interviews = $this->scopedQuery($request->user())
+            ->with(['anchor:id,name', 'contentOwner:id,name', 'client:id,name'])
+            ->when($filters['search'] !== '', function ($query) use ($filters) {
+                $term = "%{$filters['search']}%";
+
+                // Grouped so the OR-chain cannot escape and widen the other
+                // filters applied alongside it.
+                $query->where(function ($scoped) use ($term) {
+                    $scoped->where('title', 'like', $term)
+                        ->orWhere('subject_name', 'like', $term)
+                        ->orWhere('subject_company', 'like', $term)
+                        ->orWhere('code', 'like', $term);
+                });
+            })
+            ->when($filters['kind'] !== '', fn ($query) => $query->where('kind', $filters['kind']))
+            ->when($filters['stage'] !== '', fn ($query) => $query->where('stage', $filters['stage']))
+            ->when($filters['anchor'] !== '', fn ($query) => $query->where('anchor_id', $filters['anchor']))
+            ->when($filters['mine'], fn ($query) => $query->where('anchor_id', $request->user()->id))
+            ->orderByRaw('scheduled_at IS NULL')
+            ->orderBy('scheduled_at', 'desc')
+            ->paginate(20)
+            ->withQueryString()
+            ->through(fn (Interview $interview) => $this->row($interview, $request->user()));
+
+        return Inertia::render('Interviews/Index', [
+            'interviews' => $interviews,
+            'filters' => $filters,
+            'kinds' => InterviewKind::options(),
+            'stages' => InterviewStage::options(),
+            'anchors' => $this->anchorOptions(),
+            'counts' => $this->counts($request->user()),
+            'can' => [
+                'create' => $request->user()->can('create', Interview::class),
+            ],
+        ]);
+    }
+
+    /**
+     * The anchor's own diary.
+     *
+     * A separate page rather than a filter on the list, because it answers a
+     * different question — not "what interviews exist" but "what do I have to
+     * do today", which wants a different ordering and a different emphasis.
+     */
+    public function myQueue(Request $request): Response
+    {
+        $this->authorize('viewAny', Interview::class);
+
+        $user = $request->user();
+
+        $mine = Interview::query()
+            ->where('anchor_id', $user->id)
+            ->open()
+            ->with(['client:id,name'])
+            ->orderByRaw('scheduled_at IS NULL')
+            ->orderBy('scheduled_at')
+            ->get()
+            ->map(fn (Interview $interview) => $this->row($interview, $user));
+
+        return Inertia::render('Interviews/MyQueue', [
+            'upcoming' => $mine->filter(fn (array $row) => $row['stage'] !== InterviewStage::Conducted->value)->values(),
+            'toFinish' => $mine->filter(fn (array $row) => $row['stage'] === InterviewStage::Conducted->value)->values(),
+        ]);
+    }
+
+    public function create(Request $request): Response
+    {
+        $this->authorize('create', Interview::class);
+
+        /*
+         | Most bookings start from a client or a project page rather than from
+         | a blank form, so both arrive as query parameters and are filled in.
+         | A project implies its client, which saves choosing the same thing
+         | twice and saves choosing them inconsistently.
+         */
+        $project = $request->filled('project')
+            ? Project::visibleTo($request->user())->find($request->integer('project'))
+            : null;
+
+        return Inertia::render('Interviews/Form', [
+            'interview' => null,
+            'preselected' => [
+                'client_id' => $project?->client_id ?? $request->query('client'),
+                'project_id' => $project?->getKey(),
+            ],
+            ...$this->formOptions($request),
+        ]);
+    }
+
+    public function store(StoreInterviewRequest $request): RedirectResponse
+    {
+        $interview = DB::transaction(function () use ($request) {
+            $kind = InterviewKind::from($request->string('kind')->toString());
+
+            $interview = Interview::create([
+                ...$request->safe()->except(['kind']),
+                'kind' => $kind,
+                'code' => $this->codes->next('INT'),
+                'scheduled_by' => $request->user()->id,
+                'stage' => InterviewStage::Scheduled,
+                'stage_entered_at' => now(),
+                'requires_social' => true,
+            ]);
+
+            $this->stages->recordCreation($interview, $request->user(), 'Interview booked');
+
+            // The anchor's assignment is recorded from the start, so the history
+            // reads as a chain from the moment it was booked rather than
+            // beginning at the first reassignment.
+            $this->handovers->assign(
+                $interview,
+                User::findOrFail($request->integer('anchor_id')),
+                $request->user(),
+                'anchor',
+            );
+
+            return $interview;
+        });
+
+        Notifier::send(
+            [$interview->anchor],
+            'assigned',
+            "New interview: {$interview->title}",
+            $interview->scheduled_at?->format('D j M, g:ia'),
+            "/interviews/{$interview->id}",
+            $request->user(),
+        );
+
+        return redirect()
+            ->route('interviews.show', $interview)
+            ->with('success', "{$interview->code} booked.");
+    }
+
+    public function show(Request $request, Interview $interview): Response
+    {
+        $this->authorize('view', $interview);
+
+        $interview->load([
+            'anchor:id,name,job_title',
+            'scheduler:id,name',
+            'contentOwner:id,name',
+            'creativeOwner:id,name',
+            'client:id,name',
+            'project:id,code,title',
+            'assets.uploader:id,name',
+            'stageEvents.changedBy:id,name',
+        ]);
+
+        return Inertia::render('Interviews/Show', [
+            'interview' => [
+                ...$this->row($interview, $request->user()),
+                'subject_designation' => $interview->subject_designation,
+                'subject_company' => $interview->subject_company,
+                'subject_phone' => $interview->subject_phone,
+                'subject_email' => $interview->subject_email,
+                'mode' => $interview->mode,
+                'location' => $interview->location,
+                'meeting_url' => $interview->meeting_url,
+                'recording_url' => $interview->recording_url,
+                'duration_minutes' => $interview->duration_minutes,
+                'qa_summary' => $interview->qa_summary,
+                'language' => $interview->language,
+                'consent_to_publish' => $interview->consent_to_publish,
+                'notes' => $interview->notes,
+                'cancelled_reason' => $interview->cancelled_reason,
+                'conducted_at' => $interview->conducted_at?->toIso8601String(),
+                'handed_over_at' => $interview->handed_over_at?->toIso8601String(),
+                'scheduler' => $interview->scheduler?->only(['id', 'name']),
+                'content_owner' => $interview->contentOwner?->only(['id', 'name']),
+                'creative_owner' => $interview->creativeOwner?->only(['id', 'name']),
+                'project' => $interview->project?->only(['id', 'code', 'title']),
+
+                'assets' => $interview->assets->map(fn ($asset) => [
+                    'id' => $asset->id,
+                    'kind' => $asset->kind,
+                    'label' => $asset->label,
+                    'is_link' => $asset->isLink(),
+                    'url' => $asset->target(),
+                    'original_filename' => $asset->original_filename,
+                    'size_bytes' => $asset->size_bytes,
+                    'uploader' => $asset->uploader?->name,
+                    'created_at' => $asset->created_at?->toIso8601String(),
+                ]),
+
+                'history' => $interview->stageEvents->map(fn ($event) => [
+                    'id' => $event->id,
+                    'from' => $event->from_stage,
+                    'to' => $event->to_stage,
+                    'note' => $event->note,
+                    'by' => $event->changedBy?->name,
+                    'at' => $event->changed_at?->toIso8601String(),
+                ]),
+
+                // What is still missing before this can be handed over, computed
+                // server-side so the page never has to re-derive the rule.
+                'missing_for_handover' => $interview->missingForHandover(),
+            ],
+
+            'writers' => $this->writerOptions(),
+
+            // Everything the commission dialog needs, so creative work can be
+            // ordered straight off the interview it comes from. For the two
+            // social kinds this is the only route their output has.
+            'deliverableKinds' => DeliverableKind::options(),
+            'creatives' => $this->creativeOptions(),
+            'deliverables' => $interview->deliverables()
+                ->with('assignee:id,name')
+                ->get()
+                ->map(fn ($deliverable) => [
+                    'id' => $deliverable->id,
+                    'code' => $deliverable->code,
+                    'kind_label' => $deliverable->kind->label(),
+                    'slot_number' => $deliverable->slot_number,
+                    'stage' => $deliverable->stage->value,
+                    'assignee' => $deliverable->assignee?->only(['id', 'name']),
+                    'social_url' => $deliverable->socialPosts()->value('url'),
+                ]),
+
+            'can' => [
+                'update' => $request->user()->can('update', $interview),
+                'commission' => $request->user()->can('create', Deliverable::class),
+                'conduct' => $request->user()->can('conduct', $interview),
+                'handover' => $request->user()->can('handover', $interview),
+                'reassign' => $request->user()->can('reassign', $interview),
+                'cancel' => $request->user()->can('cancel', $interview),
+                'upload' => $request->user()->can('uploadAssets', $interview),
+                'deleteAsset' => $request->user()->can('deleteAsset', $interview),
+            ],
+        ]);
+    }
+
+    /** Mark conducted and record the context around it. */
+    public function conduct(ConductInterviewRequest $request, Interview $interview): RedirectResponse
+    {
+        DB::transaction(function () use ($request, $interview) {
+            $interview->fill($request->safe()->only([
+                'qa_summary', 'recording_url', 'language', 'notes',
+            ]));
+
+            $interview->consent_to_publish = $request->boolean('consent_to_publish');
+            $interview->conducted_at = $request->date('conducted_at') ?? now();
+            $interview->save();
+
+            // Only move the stage if it has not already been moved — saving the
+            // Q&A again on an already-conducted interview is an edit, not a
+            // second conducting.
+            if ($interview->stage !== InterviewStage::Conducted) {
+                $this->stages->transition(
+                    $interview,
+                    InterviewStage::Conducted,
+                    $request->user(),
+                    null,
+                    $interview->allowedNextStages(),
+                );
+            }
+        });
+
+        $interview->refresh();
+
+        $message = $interview->kind->requiresArticle() && ! $interview->isReadyForHandover()
+            ? 'Saved. Still missing '.$this->sentenceList($interview->missingForHandover()).' before handover.'
+            : 'Saved.';
+
+        return back()->with('success', $message);
+    }
+
+    public function handover(Request $request, Interview $interview): RedirectResponse
+    {
+        $this->authorize('handover', $interview);
+
+        $validated = $request->validate([
+            'content_owner_id' => ['nullable', 'integer', Rule::exists('users', 'id')],
+            'note' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $this->handovers->handOver(
+            $interview,
+            $request->user(),
+            isset($validated['content_owner_id']) ? User::find($validated['content_owner_id']) : null,
+            $validated['note'] ?? null,
+        );
+
+        return back()->with('success', "{$interview->code} handed to the content team.");
+    }
+
+    public function reassign(Request $request, Interview $interview): RedirectResponse
+    {
+        $this->authorize('reassign', $interview);
+
+        $validated = $request->validate([
+            'assigned_to' => ['required', 'integer', Rule::exists('users', 'id')],
+            'role' => ['required', Rule::in(['anchor', 'content', 'creative'])],
+            'brief' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $this->handovers->assign(
+            $interview,
+            User::findOrFail($validated['assigned_to']),
+            $request->user(),
+            $validated['role'],
+            $validated['brief'] ?? null,
+        );
+
+        return back()->with('success', 'Reassigned.');
+    }
+
+    /** Cancel, or record that the subject never turned up. */
+    public function cancel(Request $request, Interview $interview): RedirectResponse
+    {
+        $this->authorize('cancel', $interview);
+
+        $validated = $request->validate([
+            'stage' => ['required', Rule::in([InterviewStage::Cancelled->value, InterviewStage::NoShow->value])],
+            'reason' => ['required', 'string', 'max:255'],
+        ]);
+
+        $interview->update(['cancelled_reason' => $validated['reason']]);
+
+        $this->stages->transition(
+            $interview,
+            InterviewStage::from($validated['stage']),
+            $request->user(),
+            $validated['reason'],
+            $interview->allowedNextStages(),
+        );
+
+        return back()->with('success', 'Updated.');
+    }
+
+    /** Any other legal move — rescheduled, in_content, published. */
+    public function moveStage(Request $request, Interview $interview): RedirectResponse
+    {
+        $this->authorize('update', $interview);
+
+        $validated = $request->validate([
+            'stage' => ['required', Rule::in(InterviewStage::values())],
+            'note' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $this->stages->transition(
+            $interview,
+            InterviewStage::from($validated['stage']),
+            $request->user(),
+            $validated['note'] ?? null,
+            $interview->allowedNextStages(),
+        );
+
+        return back()->with('success', 'Stage updated.');
+    }
+
+    /**
+     * "a and b", "a, b and c" — the same phrasing HandoverService uses, so the
+     * toast and the refusal message read alike.
+     *
+     * @param  list<string>  $items
+     */
+    private function sentenceList(array $items): string
+    {
+        if (count($items) <= 1) {
+            return $items[0] ?? '';
+        }
+
+        $last = array_pop($items);
+
+        return implode(', ', $items).' and '.$last;
+    }
+
+    /**
+     * Only interviews this person is on, unless they hold `.all`.
+     *
+     * @return Builder<Interview>
+     */
+    private function scopedQuery(User $user)
+    {
+        return Scope::apply(Interview::query(), $user, 'interviews', [
+            'anchor_id',
+            'scheduled_by',
+            'content_owner_id',
+            'creative_owner_id',
+        ]);
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function counts(User $user): array
+    {
+        return [
+            'thisWeek' => (clone $this->scopedQuery($user))
+                ->whereBetween('scheduled_at', [now()->startOfWeek(), now()->endOfWeek()])
+                ->open()
+                ->count(),
+            'awaitingHandover' => (clone $this->scopedQuery($user))->awaitingHandover()->count(),
+            'conductedThisMonth' => (clone $this->scopedQuery($user))
+                ->whereBetween('conducted_at', [now()->startOfMonth(), now()->endOfMonth()])
+                ->count(),
+            'open' => (clone $this->scopedQuery($user))->open()->count(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    /**
+     * @return array<string, mixed>
+     */
+    private function formOptions(Request $request): array
+    {
+        return [
+            'kinds' => InterviewKind::options(),
+            'anchors' => $this->anchorOptions(),
+
+            /*
+             | Scoped, not every client in the database.
+             |
+             | A manager who can only see their own book must not be offered
+             | everybody else's in a dropdown — that is a directory leak wearing
+             | a picker, and it also lets them file work against an account they
+             | cannot then open.
+             */
+            'clients' => Client::visibleTo($request->user())
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn (Client $client) => ['id' => $client->id, 'name' => $client->name])
+                ->values(),
+
+            // Carries client_id so the form can narrow the list to the client
+            // that has been chosen, rather than offering every package sold.
+            'projects' => Project::visibleTo($request->user())
+                ->whereIn('status', [ProjectStatus::Open->value, ProjectStatus::Delivered->value])
+                ->orderBy('title')
+                ->get(['id', 'code', 'title', 'client_id'])
+                ->map(fn (Project $project) => [
+                    'id' => $project->id,
+                    'code' => $project->code,
+                    'title' => $project->title,
+                    'client_id' => $project->client_id,
+                ])
+                ->values(),
+        ];
+    }
+
+    /**
+     * @return Collection<int, array{id: int, name: string}>
+     */
+    private function anchorOptions()
+    {
+        return User::query()
+            ->active()
+            ->role(Roles::ANCHOR)
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (User $user) => ['id' => $user->id, 'name' => $user->name]);
+    }
+
+    /**
+     * @return Collection<int, array{id: int, name: string}>
+     */
+    private function writerOptions()
+    {
+        return User::query()
+            ->active()
+            ->role(Roles::CONTENT)
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (User $user) => ['id' => $user->id, 'name' => $user->name]);
+    }
+
+    /**
+     * Who can be handed a poster or a reel to make.
+     *
+     * Needed on the interview page so creative work can be commissioned
+     * straight off the interview it comes from — which, for the two social
+     * kinds, is the only route their output has.
+     *
+     * @return Collection<int, array{id: int, name: string}>
+     */
+    private function creativeOptions()
+    {
+        return User::query()
+            ->active()
+            ->role(Roles::CREATIVE)
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (User $user) => ['id' => $user->id, 'name' => $user->name]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function row(Interview $interview, User $actor): array
+    {
+        return [
+            'id' => $interview->id,
+            'code' => $interview->code,
+            'kind' => $interview->kind->value,
+            'kind_label' => $interview->kind->label(),
+            'requires_article' => $interview->requires_article,
+            'title' => $interview->title,
+            'subject_name' => $interview->subject_name,
+            'subject_company' => $interview->subject_company,
+            'client' => $interview->client?->only(['id', 'name']),
+            'anchor' => $interview->anchor?->only(['id', 'name']),
+            'stage' => $interview->stage->value,
+            'stage_label' => $interview->stage->label(),
+            'scheduled_at' => $interview->scheduled_at?->toIso8601String(),
+            'due_on' => $interview->due_on?->toDateString(),
+            'priority' => $interview->priority,
+            'is_ready_for_handover' => $interview->kind->requiresArticle()
+                ? $interview->isReadyForHandover()
+                : null,
+        ];
+    }
+}
