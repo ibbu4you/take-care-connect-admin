@@ -211,7 +211,7 @@ housekeeping.
 hPanel → Advanced → Cron Jobs → **Create**. Set it to run **every minute**:
 
 ```
-cd ~/domains/admin.takecareconnect.com && php artisan schedule:run >> /dev/null 2>&1
+cd ~/domains/admin.takecareconnect.com/app && php artisan schedule:run >> /dev/null 2>&1
 ```
 
 One entry, every minute, forever. Laravel decides internally what is actually
