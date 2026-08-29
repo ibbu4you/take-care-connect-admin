@@ -102,20 +102,6 @@ class ArticlePolicy
         return $actor->can('articles.assign') && $this->view($actor, $article);
     }
 
-    /**
-     * Downloading the publish-ready bundle.
-     *
-     * Available from `approved` onwards, and still available after publishing —
-     * somebody re-uploading a lost image should not have to un-publish the
-     * article to get at it.
-     */
-    public function export(User $actor, Article $article): bool
-    {
-        return $actor->can('articles.export')
-            && in_array($article->stage, [ArticleStage::Approved, ArticleStage::Published], true)
-            && $this->view($actor, $article);
-    }
-
     public function delete(User $actor, Article $article): bool
     {
         return $actor->can('articles.delete') && $article->stage !== ArticleStage::Published;

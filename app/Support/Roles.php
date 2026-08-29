@@ -146,9 +146,9 @@ final class Roles
         return [
             ...Permissions::only('articles', [
                 'view', 'view.all', 'create', 'update', 'assign',
-                'review', 'approve', 'publish', 'export',
+                'review', 'approve', 'publish',
             ]),
-            ...Permissions::only('interviews', ['view', 'view.all', 'update', 'export']),
+            ...Permissions::only('interviews', ['view', 'view.all', 'update']),
             // No `assets.view.all`: file access is derived from the record the
             // file hangs off. Content already sees every interview, so they
             // already reach every handover document — granting the blanket
@@ -161,7 +161,7 @@ final class Roles
             ...Permissions::only('clients', ['view', 'view.all']),
             ...Permissions::only('projects', ['view', 'view.all']),
             ...Permissions::only('comments', ['create']),
-            ...Permissions::only('reports', ['view', 'view.all', 'export']),
+            ...Permissions::only('reports', ['view', 'view.all']),
         ];
     }
 
@@ -215,16 +215,16 @@ final class Roles
             ]),
             ...Permissions::only('projects', ['view', 'create', 'update']),
             ...Permissions::only('deals', [
-                'view', 'create', 'update', 'move', 'close', 'export',
+                'view', 'create', 'update', 'move', 'close',
             ]),
             ...Permissions::only('targets', ['view']),
             ...Permissions::only('interviews', [
-                'view', 'create', 'schedule', 'cancel', 'export',
+                'view', 'create', 'schedule', 'cancel',
             ]),
             ...Permissions::only('deliverables', ['view', 'approve']),
             ...Permissions::only('social', ['links.view.all']),
             ...Permissions::only('comments', ['create']),
-            ...Permissions::only('reports', ['view', 'export']),
+            ...Permissions::only('reports', ['view']),
         ];
     }
 }

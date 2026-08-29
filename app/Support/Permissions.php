@@ -93,7 +93,6 @@ final class Permissions
                 // Separate again, because closing writes revenue.
                 'deals.close' => 'Close a deal as won or lost',
                 'deals.delete' => 'Delete a deal',
-                'deals.export' => 'Export the pipeline',
             ],
         ],
 
@@ -119,7 +118,6 @@ final class Permissions
                 'interviews.reassign' => 'Move an interview to someone else',
                 'interviews.cancel' => 'Cancel or mark a no-show',
                 'interviews.delete' => 'Delete an interview',
-                'interviews.export' => 'Export the interview log',
             ],
         ],
 
@@ -135,7 +133,6 @@ final class Permissions
                 'articles.approve' => 'Approve an article for publishing',
                 'articles.publish' => 'Mark published and record the live URL',
                 'articles.delete' => 'Delete an article',
-                'articles.export' => 'Download the draft file',
             ],
         ],
 
@@ -184,7 +181,6 @@ final class Permissions
             'permissions' => [
                 'reports.view' => 'See reports covering their own work',
                 'reports.view.all' => 'See organisation-wide reports',
-                'reports.export' => 'Download a report',
             ],
         ],
 
@@ -262,7 +258,31 @@ final class Permissions
      */
     public static function only(string $module, array $actions): array
     {
-        return array_map(static fn (string $action): string => "{$module}.{$action}", $actions);
+        $names = array_map(static fn (string $action): string => "{$module}.{$action}", $actions);
+
+        /*
+         | Refuse to compose a permission that does not exist.
+         |
+         | This used to concatenate whatever it was given, so `only('reports',
+         | ['export'])` happily produced `reports.export` long after that
+         | permission had been removed from the catalogue. Nothing complained
+         | until the seeder called syncPermissions() and spatie threw — with a
+         | message naming the permission but not the role, on a stack that
+         | passes through every test that touches a user.
+         |
+         | The mistake is in the role definition, so it is caught here, where
+         | the definition is.
+         */
+        $unknown = array_values(array_diff($names, self::all()));
+
+        if ($unknown !== []) {
+            throw new \InvalidArgumentException(
+                'Unknown permission(s) in a role definition: '.implode(', ', $unknown)
+                .'. Either add them to Permissions::GROUPS or remove them from the role.'
+            );
+        }
+
+        return $names;
     }
 
     /**
