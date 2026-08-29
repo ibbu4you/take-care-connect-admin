@@ -130,11 +130,31 @@ nano .env
 Fill in the four marked values: `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`,
 and leave `APP_KEY` blank for now. Everything else is already set for this host.
 
+### On a first deploy, install Composer's dependencies before anything else
+
+`artisan` is a PHP script that starts by requiring `vendor/autoload.php`. Until
+Composer has run there is no autoloader, so **every** `php artisan` command
+fails — and because shared hosting runs the CLI with `display_errors` off, it
+fails by printing nothing at all and returning you to the prompt. It looks
+exactly like a command that worked.
+
+```bash
+composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+```
+
+`scripts/deploy.sh` does this too, on every later deploy. It cannot do it for
+you here, because it refuses to start until `APP_KEY` is set and `APP_KEY`
+cannot be generated until the autoloader exists. That circle is only broken
+once, on the first deploy.
+
 Then generate the key:
 
 ```bash
 php artisan key:generate
 ```
+
+If that prints nothing, Composer has not run. It should say
+`INFO  Application key set successfully.`
 
 **Generate it once, and never again on a working install.** `APP_KEY` encrypts
 sessions and the two-factor secrets. Changing it signs everybody out and makes

@@ -32,6 +32,24 @@ class HealthCommand extends Command
 
     private int $notes = 0;
 
+    /**
+     * Every table this system creates.
+     *
+     * Used to answer "is this database ours?" by looking at what is in it
+     * rather than at what it is called. See database().
+     */
+    private const OWNED_TABLES = [
+        'activity_log', 'article_assets', 'articles', 'assignments',
+        'cache', 'cache_locks', 'categories', 'clients',
+        'deals', 'deliverable_files', 'deliverables', 'failed_jobs',
+        'follow_ups', 'interview_assets', 'interviews', 'job_batches',
+        'jobs', 'leads', 'migrations', 'model_has_permissions',
+        'model_has_roles', 'notes', 'notifications', 'password_reset_tokens',
+        'permissions', 'projects', 'role_has_permissions', 'roles',
+        'sequences', 'sessions', 'settings', 'social_posts',
+        'stage_events', 'targets', 'users',
+    ];
+
     public function handle(): int
     {
         $this->newLine();
@@ -82,9 +100,31 @@ class HealthCommand extends Command
              | both are Laravel apps with a `users` table — it would merge two
              | sets of accounts with different roles and different permission
              | catalogues. Better caught here than by a support call.
+             |
+             | ── Why this reads the contents, not the name ──────────────────
+             | This used to flag any database whose name contained "tcif",
+             | which is the wrong question twice over. A perfectly good empty
+             | database called `tcif_admin` is not the live site, and the live
+             | site's database would sail through under any other name. What
+             | actually matters is whether somebody else's tables are already
+             | in here.
              */
-            if (str_contains(strtolower($name), 'tcif')) {
-                $this->problem('This looks like the live website database. This system must have its own.');
+            $tables = array_map(
+                static fn ($row) => array_values((array) $row)[0],
+                DB::select('SHOW TABLES'),
+            );
+
+            $foreign = array_values(array_diff($tables, self::OWNED_TABLES));
+
+            if ($foreign !== []) {
+                $shown = array_slice($foreign, 0, 4);
+                $rest = count($foreign) - count($shown);
+
+                $this->problem(
+                    'This database holds '.count($foreign).' table(s) this system does not own ('
+                    .implode(', ', $shown).($rest > 0 ? ", +{$rest} more" : '')
+                    .'). This system must have a database of its own.'
+                );
             }
         } catch (\Throwable $e) {
             $this->problem('Cannot connect: '.$e->getMessage());
