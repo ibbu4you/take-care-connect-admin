@@ -62,50 +62,61 @@ Write down all three. They go into `.env` in step 5.
 
 ---
 
-## 3. Build the frontend — on your machine, not the server
+## 3. Get the code onto the server
 
-There is no Node on shared hosting, so this is the one step that happens
-locally:
-
-```bash
-npm ci
-npm run build
-```
-
-That writes `public/build/`. It is part of the release and gets uploaded with
-everything else.
-
-Rebuild it every time you change anything under `resources/js` or
-`resources/css`. A stale `public/build` is the classic cause of a page that
-loads blank with a 404 in the console: the HTML asks for an asset hash that no
-longer exists. `tcc:health` reports how old the build is for exactly this
-reason.
-
----
-
-## 4. Upload the application
-
-Over SSH, from your machine:
+The repository is the release. Clone it *beside* `public_html`, not into it —
+`.env` holds the database password and the key that decrypts every session and
+every two-factor secret, and it must not sit anywhere the web server can reach.
 
 ```bash
-rsync -avz --delete \
-  --exclude node_modules \
-  --exclude .env \
-  --exclude storage/app/workfiles \
-  --exclude storage/logs \
-  --exclude .git \
-  ./ USER@HOST:~/domains/admin.takecareconnect.com/
+cd ~/domains/admin.takecareconnect.com
+git clone https://github.com/ibbu4you/take-care-connect-admin.git app
 ```
 
-The three `storage` exclusions are not tidiness — they are the uploaded
-documents, video cuts and logs that live only on the server. `--delete` without
-them would remove the team's files on every deploy.
+Then point the document root at `app/public`. Hostinger serves the subdomain
+from `public_html`, so replace it with a link:
 
-If you are using the hPanel file manager instead, upload a zip of the same
-contents and extract it there. Exclude `node_modules` — it is large and the
-server does not use it.
+```bash
+rm -rf public_html
+ln -s app/public public_html
+```
 
----
+`ls -la` should now show `public_html -> app/public`.
+
+If the host refuses to serve a symlinked document root — a white page or a 403
+where the sign-in should be — see **If the symlink is refused** at the bottom of
+this page. Do not fall back to putting the application inside `public_html`
+unless nothing else works; that is what `deploy/htaccess-subdomain-root` is
+for, and it defends `.env` with a rewrite rule rather than with the filesystem.
+
+### About `public/build`
+
+It is committed, which is unusual and deliberate. Shared hosting has no Node, so
+the Vite output cannot be produced here; committing it is what makes a deploy a
+`git pull` rather than a second, separate upload that can arrive out of step.
+
+The consequence is a rule for whoever changes the frontend: **`npm run build`
+and commit the result in the same commit as the source change.** A `public/build`
+that does not match its code is the classic blank page with a 404 for an asset
+hash that no longer exists. `tcc:health` reports the build's age for exactly
+this reason.
+
+## 4. Uploads that are not code
+
+Nothing to do on a first deploy — but know where the line is, because it governs
+every deploy after this one.
+
+The repository carries the application. It does not carry, and must never
+overwrite:
+
+| | |
+|---|---|
+| `.env` | this server's configuration and keys |
+| `storage/app/workfiles` | every uploaded document, recording and video cut |
+| `storage/logs` | this server's logs |
+
+All three are gitignored, so `git pull` leaves them alone. That is the whole
+reason the deploy is a pull rather than an rsync with `--delete`.
 
 ## 5. Configure
 
@@ -235,18 +246,24 @@ minutes, and it exercises every part of the system that deployment can break.
 ## Deploying again later
 
 ```bash
-npm run build                      # locally, if the frontend changed
-rsync ...                          # as in step 4
-ssh USER@HOST
-cd ~/domains/admin.takecareconnect.com
+ssh USER@in-mum-web785.main-hosting.eu
+cd ~/domains/admin.takecareconnect.com/app
+git pull
 bash scripts/deploy.sh
 ```
 
-`scripts/deploy.sh` puts the site into maintenance mode first and takes it out
-at the end, including if it fails partway. While it is down you can still
-browse the site yourself via `https://admin.takecareconnect.com/deploying` —
-that sets a cookie that bypasses the holding page, so you can check the release
-before anybody else sees it.
+That is the whole loop. `scripts/deploy.sh` puts the site into maintenance mode
+first and takes it out at the end, including if it fails partway. While it is
+down you can still browse the site yourself via
+`https://admin.takecareconnect.com/deploying` — that sets a cookie that bypasses
+the holding page, so you can check the release before anybody else sees it.
+
+Before you push, on your own machine:
+
+```bash
+npm run build      # if anything under resources/js or resources/css changed
+git add -A && git commit && git push
+```
 
 ---
 
@@ -299,6 +316,43 @@ php artisan tcc:password you@takecareconnect.com --generate
 
 It prints a new password once and ends every signed-in session for that
 account.
+
+---
+
+## If the symlink is refused
+
+Some hosts will not serve a document root that is itself a symlink. The symptom
+is a white page or a 403 at the subdomain, while `php artisan tcc:health` on the
+server passes — the application is fine and Apache never reached it.
+
+The fix is a `public_html` that is a real directory holding nothing but a
+doorway into the application:
+
+```bash
+cd ~/domains/admin.takecareconnect.com
+rm -f public_html            # remove the symlink
+mkdir public_html
+cp app/public/.htaccess public_html/
+cp app/public/index.php  public_html/
+ln -s ../app/public/build   public_html/build
+ln -s ../app/public/fonts   public_html/fonts
+ln -s ../app/public/img     public_html/img
+ln -s ../app/storage/app/public public_html/storage
+cp app/public/favicon.ico app/public/favicon.png app/public/apple-touch-icon.png app/public/robots.txt public_html/
+```
+
+Then edit the two paths in `public_html/index.php` so they climb one level
+further — `__DIR__.'/../vendor/autoload.php'` becomes
+`__DIR__.'/../app/vendor/autoload.php'`, and the same for
+`bootstrap/app.php`.
+
+Symlinks *inside* the document root are accepted far more widely than a
+symlinked root, which is why this works when the other does not. The
+application still lives outside the web root, which is the part that matters.
+
+Only if even this fails does `deploy/htaccess-subdomain-root` come out — it puts
+the application inside `public_html` and defends `.env` with a rewrite rule.
+Read the header of that file before using it.
 
 ---
 

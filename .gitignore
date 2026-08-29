@@ -13,7 +13,15 @@
 /.zed
 /auth.json
 /node_modules
-/public/build
+# public/build is COMMITTED, deliberately.
+#
+# Hostinger shared hosting has no Node, so the Vite output cannot be produced on
+# the server. Committing it is what makes a deploy `git pull` instead of a
+# separate upload — and it is what stops the two halves drifting apart, which
+# shows up as a blank page and a 404 for an asset hash that no longer exists.
+#
+# Rebuild and commit it whenever resources/js or resources/css changes.
+# /public/build
 /public/hot
 /public/storage
 /storage/*.key
