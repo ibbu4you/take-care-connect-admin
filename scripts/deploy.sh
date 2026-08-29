@@ -44,10 +44,30 @@ composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
 say "Database"
 php artisan migrate --force
 
+say "Roles and categories"
+# DatabaseSeeder seeds the permission catalogue and the category list, and
+# nothing else — no demo data, which refuses to run in production anyway.
+#
+# Run every deploy, not just the first. Both seeders are written to be
+# re-runnable, and this is how a permission added in Permissions.php actually
+# reaches the database: the code is the definition, the tables follow it. Left
+# out, a first deploy finishes with no roles at all and `tcc:setup` cannot
+# create anybody.
+php artisan db:seed --force
+
 say "Storage link"
-# Idempotent, and cheap to repeat — the symlink does not survive every upload
-# method, and its absence shows up as broken avatars rather than an error.
-php artisan storage:link 2>/dev/null || warn "Link already exists"
+if [ -L public/storage ] || [ -d public/storage ]; then
+    printf '  link already in place
+'
+elif php artisan storage:link; then
+    :
+else
+    # Some shared hosts disable PHP's symlink(). The link is still creatable
+    # from the shell, and its absence shows up as broken avatars and 404s on
+    # every uploaded file rather than as an error anybody would connect to it.
+    warn "storage:link failed — falling back to ln"
+    ln -s ../storage/app/public public/storage || die "Could not create public/storage. Create it by hand: ln -s ../storage/app/public public/storage"
+fi
 
 say "Caches"
 php artisan config:cache
