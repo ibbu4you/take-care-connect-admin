@@ -7,6 +7,7 @@ use App\Support\Permissions;
 use App\Support\Roles;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Spatie\Permission\Models\Permission;
 
@@ -190,23 +191,35 @@ class HealthCommand extends Command
             : $this->pass($admins.' active administrator '.($admins === 1 ? 'account' : 'accounts'));
 
         /*
-         | Demo accounts on a production box.
+         | Accounts that would let anybody in.
          |
-         | Every one of these ships with the password "password" and is a real,
-         | working sign-in — so a forgotten DemoSeeder run is a wide-open door
-         | rather than untidiness.
+         | ── Why this asks about the password, not the address ─────────────
+         | It used to flag any account whose email appeared in DemoSeeder's
+         | list — which on a real installation means it flags
+         | admin@takecareconnect.com, the most natural address for the first
+         | administrator and the one already in .env as MAIL_FROM_ADDRESS. The
+         | advice it then printed was "delete them", about the only account
+         | anybody could sign in with. A check that tells you to delete your
+         | own administrator is worse than no check.
+         |
+         | What makes a demo account dangerous is that its password is
+         | "password". So that is the question. It costs one bcrypt comparison
+         | per active account, which at this system's scale is a fraction of a
+         | second, and it cannot be wrong about a real account.
          */
         if (app()->environment('production')) {
-            $demo = User::whereIn('email', [
-                'admin@takecareconnect.com',
-                'anchor@takecareconnect.com',
-                'content@takecareconnect.com',
-                'creative@takecareconnect.com',
-                'rm@takecareconnect.com',
-            ])->count();
+            $open = User::query()
+                ->active()
+                ->get(['id', 'email', 'password'])
+                ->filter(fn (User $user) => Hash::check('password', $user->password))
+                ->pluck('email');
 
-            if ($demo > 0) {
-                $this->problem($demo.' demo '.($demo === 1 ? 'account is' : 'accounts are').' live, all with the password "password". Delete them.');
+            if ($open->isNotEmpty()) {
+                $this->problem(
+                    $open->count().' '.($open->count() === 1 ? 'account signs' : 'accounts sign')
+                    .' in with the password "password": '.$open->implode(', ')
+                    .'. Change or delete '.($open->count() === 1 ? 'it' : 'them').'.'
+                );
             }
         }
     }
