@@ -10,17 +10,24 @@ use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
- * Creates every permission and re-syncs the six roles to their definitions.
+ * Creates every permission, and grants a role its defaults the first time it
+ * appears.
  *
- * Re-runnable by design: `findOrCreate` leaves existing rows and their
- * assignments alone, and `syncPermissions` brings each role back to what
- * {@see Roles::definitions()} says it should grant. So adding a capability is
- * "edit Permissions.php, edit Roles.php, seed again" — no manual SQL, and no
- * risk of a half-applied change.
+ * ── Why it does not re-sync a role that already exists ─────────────────────
+ * It used to, and `scripts/deploy.sh` now seeds on every deploy — which
+ * together meant every permission change made on the Roles page was silently
+ * reverted the next time anybody deployed. Nothing would report it: the page
+ * saved, the deploy succeeded, and the grant was simply gone.
  *
- * Note that re-seeding DOES reset any runtime edit made on the Roles page. That
- * is the intended direction of authority: the code is the definition, the UI is
- * a convenience for temporary adjustments.
+ * That also made `RoleController::reset()` pointless, and its existence is the
+ * clue to the intended model. Putting a role back to its code definition is a
+ * deliberate act with a button behind it, not a side effect of shipping.
+ *
+ * So: permissions are always created, because a permission missing from the
+ * table makes the feature it guards invisible with no error. Roles are only
+ * populated on creation. A capability added to an existing role in
+ * {@see Roles::definitions()} reaches production when somebody presses Reset on
+ * that role — which is visible, attributable, and reversible.
  */
 class RolePermissionSeeder extends Seeder
 {
@@ -35,16 +42,27 @@ class RolePermissionSeeder extends Seeder
             Permission::findOrCreate($name, 'web');
         }
 
+        $created = 0;
+
         foreach (Roles::definitions() as $role => $permissions) {
-            Role::findOrCreate($role, 'web')->syncPermissions($permissions);
+            $existing = Role::where('name', $role)->where('guard_name', 'web')->first();
+
+            if ($existing !== null) {
+                continue;   // Already configured — possibly deliberately. Leave it.
+            }
+
+            Role::create(['name' => $role, 'guard_name' => 'web'])->syncPermissions($permissions);
+            $created++;
         }
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         $this->command?->info(sprintf(
-            'Seeded %d permissions across %d roles.',
+            '%d permissions available. %s',
             count(Permissions::all()),
-            count(Roles::names()),
+            $created > 0
+                ? "Granted defaults to {$created} new role(s)."
+                : 'Existing roles left as they are — use Reset on the Roles page to restore defaults.',
         ));
     }
 }

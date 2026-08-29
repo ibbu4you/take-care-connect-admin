@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Schedule;
 |
 | Everything here is driven by a single cron entry on the server:
 |
-|     * * * * * cd /home/USER/admin.takecareconnect.com && php artisan schedule:run >> /dev/null 2>&1
+|     * * * * * cd ~/domains/admin.takecareconnect.com/app && php artisan schedule:run >> /dev/null 2>&1
 |
 | ── Why the queue is a scheduled task rather than a daemon ────────────────
 | Hostinger shared hosting has no supervisor and no long-lived processes, so

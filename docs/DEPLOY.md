@@ -305,6 +305,21 @@ PHP's upload limits. Step 6.
 `APP_KEY` changed. If you have the old one, put it back. If you do not, the
 sessions are gone regardless and every enrolment has to be cleared — see below.
 
+**Somebody forgot their password**
+There is no self-service reset — no "forgot password" link, and no email is
+ever sent by this system. That is a deliberate consequence of a small team with
+an administrator on hand, but it means recovery is always somebody else's
+action:
+
+An administrator opens Users → the person → and sets a new password. If the
+person locked out is the only administrator, do it over SSH:
+
+```bash
+php artisan tcc:password them@takecareconnect.com --generate
+```
+
+It prints a new password once and ends every signed-in session for that account.
+
 **Somebody lost the phone their two-factor is on**
 An administrator clears it from Users → the person → **Clear two-factor**. They
 are then asked to enrol a new device on their next sign-in.
