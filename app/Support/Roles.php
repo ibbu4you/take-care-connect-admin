@@ -3,7 +3,7 @@
 namespace App\Support;
 
 /**
- * The five roles, and what each one grants by default.
+ * The six roles, and what each one grants by default.
  *
  * These are starting points, not a cage. Roles are editable at runtime on the
  * Roles page, and any individual can be given extra permissions or have one
@@ -24,7 +24,7 @@ namespace App\Support;
  * Admin cannot be demoted, deactivated or deleted.
  *
  * ── Why nobody but an Admin holds `.all` by default ──────────────────────────
- * Anchors, Creatives and Relationship Managers see their own work. That keeps
+ * Anchors, Creatives, Relationship Managers and Telecallers see their own work. That keeps
  * every list short and every dashboard about the person reading it. When
  * somebody needs the team-wide view, they are direct-granted the specific
  * `.all` strings rather than promoted into a wider role — which is why there is
@@ -43,6 +43,8 @@ final class Roles
 
     public const RELATIONSHIP_MANAGER = 'Relationship Manager';
 
+    public const TELECALLER = 'Telecaller';
+
     /** @return list<string> */
     public static function names(): array
     {
@@ -52,6 +54,7 @@ final class Roles
             self::CONTENT,
             self::CREATIVE,
             self::RELATIONSHIP_MANAGER,
+            self::TELECALLER,
         ];
     }
 
@@ -68,6 +71,7 @@ final class Roles
             self::CONTENT => 'Rewrites handovers into finished articles and takes them through to published.',
             self::CREATIVE => 'Produces posters, reels and video edits, and records where they were published.',
             self::RELATIONSHIP_MANAGER => 'Owns clients and projects, works the sales pipeline and books interviews.',
+            self::TELECALLER => 'Works the call list: adds and calls leads, logs each call and books interviews.',
         ];
     }
 
@@ -84,6 +88,7 @@ final class Roles
             self::CONTENT => self::content(),
             self::CREATIVE => self::creative(),
             self::RELATIONSHIP_MANAGER => self::relationshipManager(),
+            self::TELECALLER => self::telecaller(),
         ];
     }
 
@@ -224,6 +229,33 @@ final class Roles
             ...Permissions::only('deliverables', ['view', 'approve']),
             ...Permissions::only('social', ['links.view.all']),
             ...Permissions::only('comments', ['create']),
+            ...Permissions::only('reports', ['view']),
+        ];
+    }
+
+    /**
+     * The call list, and booking interviews straight off a call.
+     *
+     * Their own leads only: they add, edit and import leads and log every call
+     * against one. Converting a lead into a client is not theirs — once a lead
+     * is qualified, the Relationship Manager takes the account, the deal and the
+     * client relationship from there, which is why there are no `clients`,
+     * `projects` or `deals` strings here.
+     *
+     * They can book and reschedule an interview (`create`, `schedule`); the ones
+     * they booked appear in their own list through `scheduled_by`. Calling one
+     * off (`interviews.cancel`) stays with the RM, since it is a conversation
+     * with the client rather than with the diary.
+     *
+     * @return list<string>
+     */
+    private static function telecaller(): array
+    {
+        return [
+            ...Permissions::only('leads', ['view', 'create', 'update', 'import']),
+            ...Permissions::only('interviews', ['view', 'create', 'schedule']),
+            ...Permissions::only('comments', ['create']),
+            // Their own figures, like every other role.
             ...Permissions::only('reports', ['view']),
         ];
     }

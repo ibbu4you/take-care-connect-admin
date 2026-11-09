@@ -51,6 +51,12 @@ class UserSeeder extends Seeder
             'role' => Roles::RELATIONSHIP_MANAGER,
             'job_title' => 'Relationship manager',
         ],
+        [
+            'name' => 'Divya Krishnan',
+            'email' => 'telecaller@takecareconnect.com',
+            'role' => Roles::TELECALLER,
+            'job_title' => 'Telecaller',
+        ],
     ];
 
     public function run(): void

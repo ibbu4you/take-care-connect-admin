@@ -40,6 +40,7 @@ const USERS = [
     { role: 'Content', email: 'content@takecareconnect.com' },
     { role: 'Creative', email: 'creative@takecareconnect.com' },
     { role: 'Relationship Manager', email: 'rm@takecareconnect.com' },
+    { role: 'Telecaller', email: 'telecaller@takecareconnect.com' },
 ];
 
 /*
@@ -63,8 +64,8 @@ const MODULES = [
     {
         module: 'Leads',
         pages: [
-            { path: '/leads', label: 'Lead list', allow: ['Admin', 'Relationship Manager'] },
-            { path: '/leads/create', label: 'Add lead', allow: ['Admin', 'Relationship Manager'] },
+            { path: '/leads', label: 'Lead list', allow: ['Admin', 'Relationship Manager', 'Telecaller'] },
+            { path: '/leads/create', label: 'Add lead', allow: ['Admin', 'Relationship Manager', 'Telecaller'] },
         ],
     },
     {
@@ -96,14 +97,18 @@ const MODULES = [
             {
                 path: '/interviews',
                 label: 'All interviews',
-                allow: ['Admin', 'Anchor', 'Content', 'Creative', 'Relationship Manager'],
+                allow: ['Admin', 'Anchor', 'Content', 'Creative', 'Relationship Manager', 'Telecaller'],
             },
             {
                 path: '/interviews/my-queue',
                 label: 'My queue',
-                allow: ['Admin', 'Anchor', 'Content', 'Creative', 'Relationship Manager'],
+                allow: ['Admin', 'Anchor', 'Content', 'Creative', 'Relationship Manager', 'Telecaller'],
             },
-            { path: '/interviews/create', label: 'Book interview', allow: ['Admin', 'Relationship Manager'] },
+            {
+                path: '/interviews/create',
+                label: 'Book interview',
+                allow: ['Admin', 'Relationship Manager', 'Telecaller'],
+            },
         ],
     },
     {

@@ -29,6 +29,10 @@ class DemoLeadSeeder extends Seeder
     {
         $manager = User::role(Roles::RELATIONSHIP_MANAGER)->first();
 
+        // Optional: the last two leads belong to the telecaller when there is
+        // one, so their call list is not empty on a fresh demo.
+        $telecaller = User::role(Roles::TELECALLER)->first();
+
         if (! $manager) {
             $this->command?->warn('No relationship manager — run UserSeeder first.');
 
@@ -97,12 +101,40 @@ class DemoLeadSeeder extends Seeder
                 'lost' => 'Too small a budget this year. Worth another call after Pongal.',
                 'log' => 'Not this year — they have just taken on a second shop and money is tight.',
             ],
+            [
+                'name' => 'Madurai Jasmine Growers',
+                'contact' => 'Selvi Murugan',
+                'trade' => 'Flower farming',
+                'city' => 'Madurai',
+                'source' => LeadSource::Social,
+                'status' => LeadStatus::Contacted,
+                'next' => 1,
+                'contacted' => -2,
+                'value' => 40000,
+                'telecaller' => true,
+                'log' => 'Picked up on the second try. Asked to call back tomorrow after the morning market.',
+            ],
+            [
+                'name' => 'Thanjavur Art Plates',
+                'contact' => 'Gopal Swamy',
+                'trade' => 'Handicrafts',
+                'city' => 'Thanjavur',
+                'source' => LeadSource::Referral,
+                'status' => LeadStatus::Interested,
+                'next' => 3,
+                'contacted' => -1,
+                'value' => 75000,
+                'telecaller' => true,
+                'log' => 'Keen on an interview for the business article. Wants to know the dates the anchor is free.',
+            ],
         ];
 
         foreach ($definitions as $definition) {
             if (Lead::where('name', $definition['name'])->exists()) {
                 continue;
             }
+
+            $owner = ($definition['telecaller'] ?? false) && $telecaller ? $telecaller : $manager;
 
             $lead = Lead::create([
                 'code' => $codes->next('LED'),
@@ -115,8 +147,8 @@ class DemoLeadSeeder extends Seeder
                 'state' => 'Tamil Nadu',
                 'source' => $definition['source'],
                 'status' => $definition['status'],
-                'owner_id' => $manager->id,
-                'created_by' => $manager->id,
+                'owner_id' => $owner->id,
+                'created_by' => $owner->id,
                 'next_action_on' => $definition['next'] === null
                     ? null
                     : now()->addDays($definition['next'])->toDateString(),
@@ -131,7 +163,7 @@ class DemoLeadSeeder extends Seeder
                 Note::create([
                     'notable_type' => $lead->getMorphClass(),
                     'notable_id' => $lead->id,
-                    'user_id' => $manager->id,
+                    'user_id' => $owner->id,
                     'body' => $definition['log'],
                 ]);
             }

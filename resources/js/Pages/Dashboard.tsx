@@ -74,7 +74,7 @@ interface DashboardProps {
     } | null;
     activity: { scope: 'team' | 'mine'; end: string; days: number[] };
     todos: {
-        kind: 'followups' | 'notes';
+        kind: 'followups' | 'calls' | 'notes';
         items: Array<{
             id: number;
             title: string;
@@ -560,18 +560,31 @@ function ActivityCard({ activity, canOpenReports }: { activity: DashboardProps['
 /* ─── Checklist (notes) ─────────────────────────────────────────────────── */
 
 function TodoCard({ todos }: { todos: DashboardProps['todos'] }) {
-    const followUps = todos.kind === 'followups';
+    const copy = {
+        followups: {
+            icon: StickyNote,
+            title: 'Follow-ups',
+            action: { label: <><Plus aria-hidden="true" />Add follow-up</>, href: '/follow-ups' },
+            empty: 'No follow-ups yet. Add one from a lead, client or deal.',
+        },
+        calls: {
+            icon: PhoneCall,
+            title: 'Call list',
+            action: { label: 'See All', href: '/leads' },
+            empty: 'No calls lined up. Set a next-call date on a lead and it appears here.',
+        },
+        notes: {
+            icon: StickyNote,
+            title: 'My notes',
+            action: null,
+            empty: 'Notes you add to a record show up here.',
+        },
+    }[todos.kind];
 
     return (
-        <DashCard
-            icon={StickyNote}
-            title={followUps ? 'Follow-ups' : 'My notes'}
-            action={followUps ? { label: <><Plus aria-hidden="true" />Add follow-up</>, href: '/follow-ups' } : null}
-        >
+        <DashCard icon={copy.icon} title={copy.title} action={copy.action}>
             {todos.items.length === 0 ? (
-                <CardEmpty icon={StickyNote}>
-                    {followUps ? 'No follow-ups yet. Add one from a lead, client or deal.' : 'Notes you add to a record show up here.'}
-                </CardEmpty>
+                <CardEmpty icon={copy.icon}>{copy.empty}</CardEmpty>
             ) : (
                 <ul className="space-y-4">
                     {todos.items.map((item) => {
@@ -629,7 +642,7 @@ function TodoCard({ todos }: { todos: DashboardProps['todos'] }) {
 
 const TAB_COPY: Record<AgendaTab, { label: string; icon: LucideIcon; empty: string }> = {
     interviews: { label: 'Interviews', icon: Mic, empty: 'No interviews booked from today on.' },
-    calls: { label: 'Calls', icon: PhoneCall, empty: 'No follow-ups due from today on.' },
+    calls: { label: 'Calls', icon: PhoneCall, empty: 'No calls due from today on.' },
     deadlines: { label: 'Deadlines', icon: PartyPopper, empty: 'Nothing due from today on.' },
 };
 

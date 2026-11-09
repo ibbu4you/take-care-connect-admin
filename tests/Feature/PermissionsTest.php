@@ -162,6 +162,7 @@ class PermissionsTest extends TestCase
                 // to anybody's private work.
                 'social.links.view.all',
             ],
+            Roles::TELECALLER => [],
             Roles::CONTENT => [
                 'articles.view.all',
                 'interviews.view.all',
@@ -190,7 +191,7 @@ class PermissionsTest extends TestCase
     {
         $this->seedRoles();
 
-        foreach ([Roles::ANCHOR, Roles::CONTENT, Roles::CREATIVE, Roles::RELATIONSHIP_MANAGER] as $role) {
+        foreach ([Roles::ANCHOR, Roles::CONTENT, Roles::CREATIVE, Roles::RELATIONSHIP_MANAGER, Roles::TELECALLER] as $role) {
             $user = User::factory()->create();
             $user->assignRole($role);
             app(PermissionRegistrar::class)->forgetCachedPermissions();

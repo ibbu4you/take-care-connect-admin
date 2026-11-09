@@ -21,7 +21,7 @@ carries on exactly as it does today.
 That separation is deliberate: it means nothing here can break the live site,
 and no version of any package has to be kept in lockstep with it.
 
-## The five working roles
+## The six working roles
 
 | Role | Owns |
 |---|---|
@@ -30,6 +30,7 @@ and no version of any package has to be kept in lockstep with it.
 | **Content** | Rewrites handovers into finished articles, through to published. |
 | **Creative** | Posters, reels and video edits, and where they were published. |
 | **Relationship Manager** | Clients, projects, the sales pipeline, booking interviews. |
+| **Telecaller** | Their own leads: adding, calling, logging each call, booking interviews. |
 
 ## The SOP this models
 
@@ -104,6 +105,7 @@ fictional clients.
 | `content@takecareconnect.com` | Content |
 | `creative@takecareconnect.com` | Creative |
 | `rm@takecareconnect.com` | Relationship Manager |
+| `telecaller@takecareconnect.com` | Telecaller |
 
 It refuses to run in production, and `php artisan tcc:health` fails if it finds
 those accounts on a production box. The first real account is made with
@@ -150,7 +152,7 @@ Three files, and nothing else needs to be consulted:
 - **`app/Support/Permissions.php`** — the `module.action` catalogue. One list
   drives the seeder, the `permission:` middleware on every route, and the
   checkbox matrix on the user form.
-- **`app/Support/Roles.php`** — what each of the five roles grants.
+- **`app/Support/Roles.php`** — what each of the six roles grants.
 - **`app/Support/Scope.php`** — row-level scoping.
 
 The `.all` suffix is scope, not a separate capability: `interviews.view` means
@@ -468,7 +470,7 @@ node scripts/audit.mjs     --base=http://127.0.0.1:8391   # access matrix
 node scripts/workflow.mjs  --base=http://127.0.0.1:8391   # the SOP, end to end
 ```
 
-`audit.mjs` signs in as all five roles and opens every module page, comparing
+`audit.mjs` signs in as all six roles and opens every module page, comparing
 what happens against what that role is *supposed* to reach. The expectations are
 written from each role's job rather than copied from the permission seeder —
 copying it would only prove the seeder agrees with itself.

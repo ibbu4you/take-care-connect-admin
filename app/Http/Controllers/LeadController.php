@@ -382,7 +382,8 @@ class LeadController extends Controller
     {
         return User::query()
             ->active()
-            ->role(Roles::RELATIONSHIP_MANAGER)
+            // Telecallers work leads too, so a lead can be handed to one.
+            ->role([Roles::RELATIONSHIP_MANAGER, Roles::TELECALLER])
             ->orderBy('name')
             ->get(['id', 'name'])
             ->map(fn (User $user) => ['id' => $user->id, 'name' => $user->name]);

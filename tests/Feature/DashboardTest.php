@@ -38,6 +38,7 @@ class DashboardTest extends TestCase
             'content' => [Roles::CONTENT, ['content', 'interviews'], ['sales']],
             'creative' => [Roles::CREATIVE, ['creative', 'interviews'], ['sales', 'content', 'organisation']],
             'relationship manager' => [Roles::RELATIONSHIP_MANAGER, ['sales', 'interviews'], ['content']],
+            'telecaller' => [Roles::TELECALLER, ['leads', 'interviews'], ['sales', 'content', 'creative', 'organisation']],
             'admin' => [Roles::ADMIN, ['sales', 'interviews', 'content', 'creative', 'organisation'], []],
         ];
     }

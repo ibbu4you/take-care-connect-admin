@@ -472,14 +472,43 @@ class DashboardController extends Controller
     }
 
     /**
-     * The checklist: follow-ups for anybody in sales, their own notes otherwise.
+     * The checklist: follow-ups for anybody in sales, the call list for
+     * somebody who works leads without the pipeline (a telecaller — the
+     * Follow-ups page sits behind deals.view, so linking them there would 403),
+     * and their own notes otherwise.
      *
      * @param  array<string, bool>  $panels
      * @return array<string, mixed>
      */
     private function todos(User $user, array $panels): array
     {
-        if ($panels['sales'] || $panels['leads']) {
+        if (! $panels['sales'] && $panels['leads']) {
+            return [
+                'kind' => 'calls',
+                'items' => $this->callList($user)->limit(3)->get()->map(function (Lead $lead) {
+                    $due = $lead->next_action_on;
+
+                    return [
+                        'id' => $lead->id,
+                        'title' => $lead->name,
+                        'body' => collect([$lead->contact_person, $lead->phone])->filter()->implode(' · '),
+                        'tags' => [
+                            match (true) {
+                                $due->isToday() => ['label' => 'Today', 'tone' => 'danger'],
+                                $due->isPast() => ['label' => 'Overdue', 'tone' => 'danger'],
+                                default => ['label' => 'Upcoming', 'tone' => 'info'],
+                            },
+                            ['label' => $lead->status->label(), 'tone' => 'warning'],
+                        ],
+                        'date' => $due->format('M d'),
+                        'done' => false,
+                        'url' => "/leads/{$lead->id}",
+                    ];
+                })->all(),
+            ];
+        }
+
+        if ($panels['sales']) {
             $with = ['client:id,name', 'lead:id,name', 'deal:id,title'];
 
             $pending = FollowUp::with($with)->where('user_id', $user->id)->pending()
@@ -574,7 +603,22 @@ class DashboardController extends Controller
                 })->all();
         }
 
-        if ($panels['sales'] || $panels['leads']) {
+        if (! $panels['sales'] && $panels['leads']) {
+            $tabs['calls'] = $this->callList($user)
+                ->whereDate('next_action_on', '>=', now())
+                ->with('owner')
+                ->limit(4)
+                ->get()
+                ->map(fn (Lead $lead) => [
+                    'id' => "lead-{$lead->id}",
+                    'title' => $lead->name,
+                    'when' => $lead->next_action_on->format('D j M'),
+                    'people' => $this->people([$lead->owner]),
+                    'place' => collect([$lead->contact_person, $lead->phone])->filter()->implode(' · ') ?: $lead->code,
+                    'tag' => $lead->status->label(),
+                    'url' => "/leads/{$lead->id}",
+                ])->all();
+        } elseif ($panels['sales']) {
             $tabs['calls'] = FollowUp::with(['client:id,name', 'lead:id,name', 'deal:id,title', 'owner'])
                 ->where('user_id', $user->id)
                 ->pending()
@@ -640,6 +684,16 @@ class DashboardController extends Controller
         }
 
         return $tabs;
+    }
+
+    /**
+     * Open leads with a next call on them, soonest first — the call list.
+     *
+     * @return Builder<Lead>
+     */
+    private function callList(User $user): Builder
+    {
+        return Lead::visibleTo($user)->open()->whereNotNull('next_action_on')->orderBy('next_action_on');
     }
 
     /** "8:00 – 8:45 AM", or "11:30 AM – 12:15 PM" across noon. */
