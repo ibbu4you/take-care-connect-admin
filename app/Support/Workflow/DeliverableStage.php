@@ -87,11 +87,14 @@ enum DeliverableStage: string implements Stage
      * would let things sit there looking filed. It shows as a flag on the
      * in-progress card instead.
      *
+     * `scheduled` IS a column. It used to be missing, and a deliverable queued
+     * for posting dropped off the board entirely between Approved and Published.
+     *
      * @return list<self>
      */
     public static function boardColumns(): array
     {
-        return [self::Pending, self::InProgress, self::Review, self::Approved, self::Published];
+        return [self::Pending, self::InProgress, self::Review, self::Approved, self::Scheduled, self::Published];
     }
 
     /**

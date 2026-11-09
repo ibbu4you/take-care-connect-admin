@@ -277,7 +277,11 @@ function BreakdownCard({ breakdown }: { breakdown: NonNullable<DashboardProps['b
                         <li
                             key={bar.label}
                             title={`${bar.label}: ${bar.value}`}
-                            className={cn('w-2.5 rounded-t-[3px]', bar.open ? 'bg-primary' : 'bg-primary/30')}
+                            className={cn(
+                                'w-2.5 rounded-t-[3px]',
+                                // An empty stage is a grey stub, so zero never reads as data.
+                                bar.value === 0 ? 'bg-border' : bar.open ? 'bg-primary' : 'bg-primary/30',
+                            )}
                             style={{ height: `${Math.max(8, (bar.value / peak) * 100)}%` }}
                         >
                             <span className="sr-only">
@@ -372,21 +376,82 @@ function NeedsYouCard({ items }: { items: AttentionItem[] }) {
 
 /* ─── Gauge ─────────────────────────────────────────────────────────────── */
 
-const GAUGE_COPY: Record<Exclude<ModuleKind, 'deals'>, { title: string; icon: LucideIcon; href: string; empty: string }> = {
-    interviews: { title: 'Interviews', icon: Mic, href: '/interviews', empty: 'No interviews booked yet.' },
-    articles: { title: 'Articles', icon: FileText, href: '/articles/queue', empty: 'No articles in the queue.' },
-    deliverables: { title: 'Deliverables', icon: Clapperboard, href: '/deliverables', empty: 'No deliverables open.' },
+interface GaugeCopy {
+    title: string;
+    icon: LucideIcon;
+    href: string;
+    /** What the blue part counts, and what the whole arc counts. */
+    done: string;
+    total: string;
+    empty: string;
+    /** The button in the empty state, and the permission that shows it. */
+    cta: { label: string; href: string; permission: string };
+}
+
+const GAUGE_COPY: Record<Exclude<ModuleKind, 'deals'>, GaugeCopy> = {
+    interviews: {
+        title: 'Interviews',
+        icon: Mic,
+        href: '/interviews',
+        done: 'conducted',
+        total: 'booked',
+        empty: 'Nothing booked yet. The next three interviews will show here.',
+        cta: { label: 'Book an interview', href: '/interviews/create', permission: 'interviews.create' },
+    },
+    articles: {
+        title: 'Articles',
+        icon: FileText,
+        href: '/articles/queue',
+        done: 'published',
+        total: 'in play',
+        empty: 'The queue is empty. Handovers waiting for a writer will show here.',
+        cta: { label: 'Open the queue', href: '/articles/queue', permission: 'articles.view' },
+    },
+    deliverables: {
+        title: 'Deliverables',
+        icon: Clapperboard,
+        href: '/deliverables',
+        done: 'posted',
+        total: 'in play',
+        empty: 'Nothing open. Briefs assigned to the team will show here.',
+        cta: { label: 'Open the board', href: '/deliverables/board', permission: 'deliverables.view' },
+    },
 };
 
 function GaugeCard({ gauge }: { gauge: NonNullable<DashboardProps['gauge']> }) {
+    const { can } = usePermissions();
     const copy = GAUGE_COPY[gauge.kind];
+    const month = monthName();
 
     return (
         <DashCard icon={copy.icon} title={copy.title} action={{ label: 'See All', href: copy.href }}>
-            <Gauge value={gauge.value} max={gauge.max} caption={`out of ${gauge.max} this month`} />
+            <Gauge value={gauge.value} max={gauge.max} label={copy.done} />
+
+            {/* The period and both halves of the figure, spelled out once. */}
+            <div className="mt-3 flex items-center justify-center gap-4 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
+                    <span className="tabular">{gauge.value}</span> {copy.done}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-border" aria-hidden="true" />
+                    <span className="tabular">{gauge.max}</span> {copy.total}
+                </span>
+                <span>in {month}</span>
+            </div>
 
             {gauge.items.length === 0 ? (
-                <p className="pt-4 text-center text-sm text-muted-foreground">{copy.empty}</p>
+                <div className="mt-4 flex flex-col items-center gap-3 rounded-lg border border-dashed border-border px-4 py-4 text-center">
+                    <p className="text-sm text-muted-foreground">{copy.empty}</p>
+                    {can(copy.cta.permission) && (
+                        <Button asChild variant="outline" size="sm" className="rounded-lg shadow-xs">
+                            <Link href={copy.cta.href}>
+                                {copy.cta.href.endsWith('/create') && <Plus aria-hidden="true" />}
+                                {copy.cta.label}
+                            </Link>
+                        </Button>
+                    )}
+                </div>
             ) : (
                 <ul className="mt-4 divide-y divide-border border-t border-border">
                     {gauge.items.map((item) => (

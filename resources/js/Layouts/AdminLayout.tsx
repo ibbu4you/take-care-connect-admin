@@ -97,7 +97,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                   | stranded from the left — which reads as an empty page
                   | rather than a spacious one.
                 */}
-                <main id="main" className="mx-auto w-full max-w-[90rem] px-4 py-6 lg:px-8 lg:py-6">
+                <main id="main" className="mx-auto w-full max-w-[120rem] px-4 py-6 lg:px-8 lg:py-6">
                     {children}
                 </main>
             </div>

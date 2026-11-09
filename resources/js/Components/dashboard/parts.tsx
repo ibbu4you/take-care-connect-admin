@@ -135,25 +135,31 @@ export function ProgressRing({ percent, size = 80 }: { percent: number; size?: n
     );
 }
 
-/** The half-circle gauge with the figure in its middle. */
-export function Gauge({ value, max, caption }: { value: number; max: number; caption: string }) {
+/**
+ * The half-circle gauge with the figure in its middle.
+ *
+ * The caption is kept short ("out of 12") because it sits on the baseline
+ * between the arc's two ends: anything longer runs into the round caps. Say
+ * what period it covers underneath the gauge, not inside it.
+ */
+export function Gauge({ value, max, label }: { value: number; max: number; label: string }) {
     const percent = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+    const arc = 'M 20 100 A 80 80 0 0 1 180 100';
 
     return (
-        <div className="relative mx-auto w-full max-w-[200px]">
-            <svg viewBox="0 0 200 112" className="w-full" aria-hidden="true">
-                <path
-                    d="M 22 100 A 78 78 0 0 1 178 100"
-                    fill="none"
-                    strokeWidth="24"
-                    strokeLinecap="round"
-                    className="stroke-muted"
-                />
+        <div
+            className="relative mx-auto w-full max-w-[240px]"
+            role="img"
+            aria-label={`${value} ${label} out of ${max}`}
+        >
+            <svg viewBox="0 0 200 110" className="w-full overflow-visible" aria-hidden="true">
+                {/* --border rather than --muted: on a white card --muted is all but invisible. */}
+                <path d={arc} fill="none" strokeWidth="20" strokeLinecap="round" className="stroke-border" />
                 {percent > 0 && (
                     <path
-                        d="M 22 100 A 78 78 0 0 1 178 100"
+                        d={arc}
                         fill="none"
-                        strokeWidth="24"
+                        strokeWidth="20"
                         strokeLinecap="round"
                         pathLength={100}
                         strokeDasharray={`${percent} 100`}
@@ -162,9 +168,11 @@ export function Gauge({ value, max, caption }: { value: number; max: number; cap
                 )}
             </svg>
 
-            <div className="absolute inset-x-0 bottom-0 text-center">
-                <p className="text-2xl font-medium leading-8 tabular">{value}</p>
-                <p className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted-foreground">{caption}</p>
+            <div className="absolute inset-x-0 bottom-0 flex flex-col items-center">
+                <span className="text-[32px] font-medium leading-9 tracking-tight tabular">{value}</span>
+                <span className="mt-0.5 text-[11px] font-medium uppercase leading-4 tracking-[0.06em] text-muted-foreground tabular">
+                    Out of {max}
+                </span>
             </div>
         </div>
     );
