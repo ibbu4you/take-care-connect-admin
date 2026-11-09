@@ -8,13 +8,21 @@ use App\Models\Deliverable;
 use App\Models\FollowUp;
 use App\Models\Interview;
 use App\Models\Lead;
+use App\Models\Note;
+use App\Models\StageEvent;
 use App\Models\Target;
 use App\Models\User;
 use App\Support\Scope;
 use App\Support\Workflow\ArticleStage;
 use App\Support\Workflow\DeliverableStage;
+use App\Support\Workflow\InterviewStage;
+use App\Support\Workflow\PipelineStage;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -35,6 +43,11 @@ use Inertia\Response;
  */
 class DashboardController extends Controller
 {
+    /** Every column that puts somebody "on" an interview, for {@see Scope}. */
+    private const INTERVIEW_COLUMNS = ['anchor_id', 'scheduled_by', 'content_owner_id', 'creative_owner_id'];
+
+    private const ARTICLE_COLUMNS = ['writer_id', 'reviewer_id'];
+
     public function __invoke(Request $request): Response
     {
         $user = $request->user();
@@ -52,119 +65,18 @@ class DashboardController extends Controller
             'greeting' => $this->greeting(),
             'panels' => $panels,
 
-            // Only the sections this person can see are computed at all — an
-            // anchor's dashboard should not be running five sales aggregates
-            // whose results are then thrown away.
-            'sales' => $panels['sales'] ? $this->sales($user) : null,
-            'interviews' => $panels['interviews'] ? $this->interviews($user) : null,
-            'content' => $panels['content'] ? $this->content($user) : null,
-            'creative' => $panels['creative'] ? $this->creative($user) : null,
-
             'attention' => $this->attention($user, $panels),
+
+            // The cards. Each picks the module it describes from what this
+            // person can see, so every role gets a full page rather than a
+            // dashboard with holes where somebody else's numbers would be.
+            'progress' => $this->progress($user, $panels),
+            'breakdown' => $this->breakdown($user, $panels),
+            'gauge' => $this->gauge($user, $panels),
+            'activity' => $this->activity($user),
+            'todos' => $this->todos($user, $panels),
+            'agenda' => $this->agenda($user, $panels),
         ]);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function sales(User $user): array
-    {
-        $open = $this->scope(Deal::query(), $user, 'deals', ['owner_id'])->open()->get();
-
-        $won = (float) $this->scope(Deal::query(), $user, 'deals', ['owner_id'])
-            ->won()
-            ->whereBetween('closed_at', [now()->startOfMonth(), now()->endOfMonth()])
-            ->sum('actual_value');
-
-        $target = Target::where('user_id', $user->id)
-            ->where('period', Target::currentPeriod())
-            ->value('revenue_target');
-
-        return [
-            'open_count' => $open->count(),
-            'pipeline_value' => round($open->sum(fn (Deal $deal) => (float) $deal->expected_value), 2),
-            'weighted_value' => round($open->sum(fn (Deal $deal) => $deal->weightedValue()), 2),
-            'won_this_month' => $won,
-            'revenue_target' => $target !== null ? (float) $target : null,
-            'attainment' => $target > 0 ? (int) round(($won / (float) $target) * 100) : null,
-            'idle_count' => $this->scope(Deal::query(), $user, 'deals', ['owner_id'])->idle()->count(),
-            'follow_ups_due' => FollowUp::where('user_id', $user->id)->due()->count(),
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function interviews(User $user): array
-    {
-        $columns = ['anchor_id', 'scheduled_by', 'content_owner_id', 'creative_owner_id'];
-
-        return [
-            'this_week' => $this->scope(Interview::query(), $user, 'interviews', $columns)
-                ->whereBetween('scheduled_at', [now()->startOfWeek(), now()->endOfWeek()])
-                ->open()
-                ->count(),
-            'awaiting_handover' => $this->scope(Interview::query(), $user, 'interviews', $columns)
-                ->awaitingHandover()
-                ->count(),
-            'conducted_this_month' => $this->scope(Interview::query(), $user, 'interviews', $columns)
-                ->whereBetween('conducted_at', [now()->startOfMonth(), now()->endOfMonth()])
-                ->count(),
-            'open' => $this->scope(Interview::query(), $user, 'interviews', $columns)->open()->count(),
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function content(User $user): array
-    {
-        $columns = ['writer_id', 'reviewer_id'];
-
-        return [
-            'handovers_waiting' => $this->scope(Article::query(), $user, 'articles', $columns)
-                ->where('stage', ArticleStage::Assigned->value)
-                ->count(),
-            'my_drafts' => $this->scope(Article::query(), $user, 'articles', $columns)
-                ->where('writer_id', $user->id)
-                ->whereIn('stage', [ArticleStage::Drafting->value, ArticleStage::Revisions->value])
-                ->count(),
-            'in_review' => $this->scope(Article::query(), $user, 'articles', $columns)
-                ->awaitingReview()
-                ->count(),
-            'published_this_month' => $this->scope(Article::query(), $user, 'articles', $columns)
-                ->whereBetween('published_at', [now()->startOfMonth(), now()->endOfMonth()])
-                ->count(),
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function creative(User $user): array
-    {
-        /*
-         | Deliverables are scoped through the model, not through Scope directly.
-         |
-         | Their visibility includes "somebody on the parent interview", which is
-         | a relationship rather than a column — so the rule lives in one place
-         | and the dashboard, the board and the policy all read it. Duplicating
-         | the column list here is exactly how a tile ends up reading zero while
-         | the board it links to has six cards on it.
-         */
-        return [
-            'assigned_to_me' => Deliverable::visibleTo($user)
-                ->where('assigned_to', $user->id)
-                ->open()
-                ->count(),
-            'in_review' => Deliverable::visibleTo($user)
-                ->where('stage', DeliverableStage::Review->value)
-                ->count(),
-            'awaiting_publish' => Deliverable::visibleTo($user)->awaitingPublish()->count(),
-            'published_this_month' => Deliverable::visibleTo($user)
-                ->whereBetween('published_at', [now()->startOfMonth(), now()->endOfMonth()])
-                ->count(),
-        ];
     }
 
     /**
@@ -299,6 +211,470 @@ class DashboardController extends Controller
 
         // Capped so the panel stays a to-do list rather than a second inbox.
         return array_slice($items, 0, 8);
+    }
+
+    /**
+     * The progress ring: how far through this month's goal.
+     *
+     * A revenue target first, because it is the one number a target is set
+     * for; an interview target next; otherwise the share of the queue already
+     * out of the door.
+     *
+     * @param  array<string, bool>  $panels
+     * @return array<string, mixed>|null
+     */
+    private function progress(User $user, array $panels): ?array
+    {
+        $target = Target::where('user_id', $user->id)->where('period', Target::currentPeriod())->first();
+        $month = [now()->startOfMonth(), now()->endOfMonth()];
+
+        if ($panels['sales'] && (float) ($target?->revenue_target ?? 0) > 0) {
+            return [
+                'kind' => 'revenue',
+                'done' => (float) $this->scope(Deal::query(), $user, 'deals', ['owner_id'])
+                    ->won()->whereBetween('closed_at', $month)->sum('actual_value'),
+                'total' => (float) $target->revenue_target,
+            ];
+        }
+
+        if ($panels['interviews'] && (int) ($target?->interviews_target ?? 0) > 0) {
+            return [
+                'kind' => 'interviews',
+                'done' => Interview::where('anchor_id', $user->id)->whereBetween('conducted_at', $month)->count(),
+                'total' => (int) $target->interviews_target,
+            ];
+        }
+
+        if ($panels['sales']) {
+            return ['kind' => 'revenue', 'done' => 0, 'total' => null];
+        }
+
+        if ($panels['content']) {
+            $articles = fn () => $this->scope(Article::query(), $user, 'articles', self::ARTICLE_COLUMNS);
+            $done = $articles()->whereBetween('published_at', $month)->count();
+
+            return ['kind' => 'articles', 'done' => $done, 'total' => $done + $articles()->open()->count()];
+        }
+
+        if ($panels['creative']) {
+            $done = Deliverable::visibleTo($user)->whereBetween('published_at', $month)->count();
+
+            return ['kind' => 'deliverables', 'done' => $done, 'total' => $done + Deliverable::visibleTo($user)->open()->count()];
+        }
+
+        if ($panels['interviews']) {
+            $interviews = fn () => $this->scope(Interview::query(), $user, 'interviews', self::INTERVIEW_COLUMNS);
+            $done = $interviews()->whereBetween('conducted_at', $month)->count();
+
+            return ['kind' => 'interviews', 'done' => $done, 'total' => $done + $interviews()->open()->count()];
+        }
+
+        return null;
+    }
+
+    /**
+     * The bar chart: where the open work sits, stage by stage.
+     *
+     * Open stages are drawn solid; the closed ones (won, published, rejected…)
+     * are drawn pale and count only this month, otherwise a year of history
+     * would flatten every open bar to nothing.
+     *
+     * @param  array<string, bool>  $panels
+     * @return array<string, mixed>|null
+     */
+    private function breakdown(User $user, array $panels): ?array
+    {
+        return match (true) {
+            $panels['sales'] => $this->stageBreakdown(
+                'deals',
+                fn () => $this->scope(Deal::query(), $user, 'deals', ['owner_id']),
+                PipelineStage::cases(),
+                [PipelineStage::Won, PipelineStage::Lost],
+                'owner_id',
+            ),
+            $panels['interviews'] => $this->stageBreakdown(
+                'interviews',
+                fn () => $this->scope(Interview::query(), $user, 'interviews', self::INTERVIEW_COLUMNS),
+                InterviewStage::cases(),
+                [InterviewStage::Published, InterviewStage::Cancelled, InterviewStage::NoShow],
+                'anchor_id',
+            ),
+            $panels['content'] => $this->stageBreakdown(
+                'articles',
+                fn () => $this->scope(Article::query(), $user, 'articles', self::ARTICLE_COLUMNS),
+                ArticleStage::cases(),
+                [ArticleStage::Published],
+                'writer_id',
+            ),
+            $panels['creative'] => $this->stageBreakdown(
+                'deliverables',
+                fn () => Deliverable::visibleTo($user),
+                DeliverableStage::cases(),
+                [DeliverableStage::Published],
+                'assigned_to',
+            ),
+            default => null,
+        };
+    }
+
+    /**
+     * @param  \Closure(): Builder<Model>  $base
+     * @param  array<int, \BackedEnum>  $stages
+     * @param  array<int, \BackedEnum>  $closed
+     * @return array<string, mixed>
+     */
+    private function stageBreakdown(string $kind, \Closure $base, array $stages, array $closed, string $personColumn): array
+    {
+        $closedValues = array_map(static fn (\BackedEnum $stage) => $stage->value, $closed);
+        $openValues = [];
+        $bars = [];
+
+        foreach ($stages as $stage) {
+            $isClosed = in_array($stage->value, $closedValues, true);
+            $query = $base()->where('stage', $stage->value);
+
+            if ($isClosed) {
+                $query->where('stage_entered_at', '>=', now()->startOfMonth());
+            } else {
+                $openValues[] = $stage->value;
+            }
+
+            /** @phpstan-ignore method.notFound */
+            $bars[] = ['label' => $stage->label(), 'value' => $query->count(), 'open' => ! $isClosed];
+        }
+
+        $peopleIds = $base()->whereIn('stage', $openValues)->whereNotNull($personColumn)
+            ->distinct()->pluck($personColumn);
+
+        return [
+            'kind' => $kind,
+            'total' => array_sum(array_map(static fn (array $bar) => $bar['open'] ? $bar['value'] : 0, $bars)),
+            'bars' => $bars,
+            'people' => User::whereIn('id', $peopleIds->take(3))->get()->map(fn (User $person) => $this->person($person))->all(),
+            'people_count' => $peopleIds->count(),
+        ];
+    }
+
+    /**
+     * The half-circle gauge and the three rows under it.
+     *
+     * @param  array<string, bool>  $panels
+     * @return array<string, mixed>|null
+     */
+    private function gauge(User $user, array $panels): ?array
+    {
+        $month = [now()->startOfMonth(), now()->endOfMonth()];
+
+        if ($panels['interviews']) {
+            $interviews = fn () => $this->scope(Interview::query(), $user, 'interviews', self::INTERVIEW_COLUMNS);
+
+            $done = $interviews()->whereBetween('conducted_at', $month)->count();
+            $planned = $interviews()->whereBetween('scheduled_at', $month)
+                ->where('stage', '!=', InterviewStage::Cancelled->value)->count();
+
+            // Upcoming first; if the diary is thin, the most recent ones fill in.
+            $upcoming = $interviews()->open()->where('scheduled_at', '>=', now()->startOfDay())
+                ->orderBy('scheduled_at')->limit(3)->get();
+            $rows = $upcoming->count() >= 3 ? $upcoming : $upcoming->concat(
+                $interviews()->where('scheduled_at', '<', now()->startOfDay())
+                    ->latest('scheduled_at')->limit(3 - $upcoming->count())->get(),
+            );
+
+            return [
+                'kind' => 'interviews',
+                'value' => $done,
+                'max' => max($done, $planned),
+                'items' => $rows->map(fn (Interview $interview) => [
+                    'id' => $interview->id,
+                    'date' => $interview->scheduled_at?->format('M j, Y') ?? 'Not scheduled',
+                    'meta' => $interview->kind->label(),
+                    'status' => $interview->stage->label(),
+                    'tone' => $this->stageTone($interview->stage->value),
+                    'url' => "/interviews/{$interview->id}",
+                ])->values()->all(),
+            ];
+        }
+
+        if ($panels['content']) {
+            $articles = fn () => $this->scope(Article::query(), $user, 'articles', self::ARTICLE_COLUMNS);
+            $done = $articles()->whereBetween('published_at', $month)->count();
+
+            return [
+                'kind' => 'articles',
+                'value' => $done,
+                'max' => $done + $articles()->open()->count(),
+                'items' => $articles()->open()->orderByRaw('due_on is null')->orderBy('due_on')->limit(3)->get()
+                    ->map(fn (Article $article) => [
+                        'id' => $article->id,
+                        'date' => ($article->due_on ?? $article->created_at)?->format('M j, Y'),
+                        'meta' => $article->code,
+                        'status' => $article->stage->label(),
+                        'tone' => $this->stageTone($article->stage->value),
+                        'url' => "/articles/{$article->id}",
+                    ])->all(),
+            ];
+        }
+
+        if ($panels['creative']) {
+            $done = Deliverable::visibleTo($user)->whereBetween('published_at', $month)->count();
+
+            return [
+                'kind' => 'deliverables',
+                'value' => $done,
+                'max' => $done + Deliverable::visibleTo($user)->open()->count(),
+                'items' => Deliverable::visibleTo($user)->open()->orderByRaw('due_on is null')->orderBy('due_on')
+                    ->limit(3)->get()
+                    ->map(fn (Deliverable $deliverable) => [
+                        'id' => $deliverable->id,
+                        'date' => ($deliverable->due_on ?? $deliverable->created_at)?->format('M j, Y'),
+                        'meta' => $deliverable->kind->label(),
+                        'status' => $deliverable->stage->label(),
+                        'tone' => $this->stageTone($deliverable->stage->value),
+                        'url' => "/deliverables/{$deliverable->id}",
+                    ])->all(),
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Stage moves per day for the last year — the line chart.
+     *
+     * Somebody who can see the whole organisation's reports sees the whole
+     * team's moves; everybody else sees their own, which is the only figure
+     * every role is entitled to.
+     *
+     * @return array<string, mixed>
+     */
+    private function activity(User $user): array
+    {
+        $team = $user->can('reports.view.all');
+        $start = now()->subDays(364)->startOfDay();
+
+        $query = StageEvent::query()->where('changed_at', '>=', $start);
+
+        if (! $team) {
+            $query->where('changed_by', $user->id);
+        }
+
+        $counts = $query->selectRaw('DATE(changed_at) as day, COUNT(*) as total')
+            ->groupBy('day')
+            ->pluck('total', 'day');
+
+        $days = [];
+
+        for ($day = $start->copy(); $day->lte(now()); $day->addDay()) {
+            $days[] = (int) ($counts[$day->toDateString()] ?? 0);
+        }
+
+        return ['scope' => $team ? 'team' : 'mine', 'end' => now()->toDateString(), 'days' => $days];
+    }
+
+    /**
+     * The checklist: follow-ups for anybody in sales, their own notes otherwise.
+     *
+     * @param  array<string, bool>  $panels
+     * @return array<string, mixed>
+     */
+    private function todos(User $user, array $panels): array
+    {
+        if ($panels['sales'] || $panels['leads']) {
+            $with = ['client:id,name', 'lead:id,name', 'deal:id,title'];
+
+            $pending = FollowUp::with($with)->where('user_id', $user->id)->pending()
+                ->orderBy('due_on')->limit(3)->get();
+            $done = $pending->count() >= 3 ? new Collection : FollowUp::with($with)
+                ->where('user_id', $user->id)->whereNotNull('completed_at')
+                ->latest('completed_at')->limit(3 - $pending->count())->get();
+
+            return [
+                'kind' => 'followups',
+                'items' => $pending->concat($done)->map(function (FollowUp $followUp) {
+                    $finished = $followUp->completed_at !== null;
+                    $due = $followUp->due_on;
+
+                    $when = match (true) {
+                        $finished => ['label' => 'Done', 'tone' => 'neutral'],
+                        $due === null => ['label' => 'No date', 'tone' => 'neutral'],
+                        $due->isToday() => ['label' => 'Today', 'tone' => 'danger'],
+                        $due->isPast() => ['label' => 'Overdue', 'tone' => 'danger'],
+                        default => ['label' => 'Upcoming', 'tone' => 'info'],
+                    };
+
+                    return [
+                        'id' => $followUp->id,
+                        'title' => $followUp->deal?->title ?? $followUp->lead?->name ?? $followUp->client?->name ?? 'Follow-up',
+                        'body' => $followUp->note ?: ($followUp->outcome_note ?: ''),
+                        'tags' => [
+                            $when,
+                            ['label' => Str::headline($followUp->channel ?? 'call'), 'tone' => $finished ? 'neutral' : 'warning'],
+                        ],
+                        'date' => $due?->format('M d'),
+                        'done' => $finished,
+                        'url' => match (true) {
+                            $followUp->deal_id !== null => "/deals/{$followUp->deal_id}",
+                            $followUp->lead_id !== null => "/leads/{$followUp->lead_id}",
+                            $followUp->client_id !== null => "/clients/{$followUp->client_id}",
+                            default => '/follow-ups',
+                        },
+                    ];
+                })->values()->all(),
+            ];
+        }
+
+        return [
+            'kind' => 'notes',
+            'items' => Note::with('notable')->where('user_id', $user->id)->latest()->limit(3)->get()
+                ->map(fn (Note $note) => [
+                    'id' => $note->id,
+                    'title' => $note->notable?->title ?? $note->notable?->name ?? $note->notable?->code ?? 'Deleted record',
+                    'body' => Str::limit(trim(strip_tags((string) $note->body)), 140),
+                    'tags' => [['label' => Str::headline(class_basename((string) $note->notable_type)), 'tone' => 'neutral']],
+                    'date' => $note->created_at?->format('M d'),
+                    'done' => false,
+                    'url' => null,
+                ])->all(),
+        ];
+    }
+
+    /**
+     * The coloured cards on the right: what is coming up, in tabs.
+     *
+     * @param  array<string, bool>  $panels
+     * @return array<string, list<array<string, mixed>>>
+     */
+    private function agenda(User $user, array $panels): array
+    {
+        $tabs = [];
+
+        if ($panels['interviews']) {
+            $tabs['interviews'] = $this->scope(Interview::query(), $user, 'interviews', self::INTERVIEW_COLUMNS)
+                ->open()
+                ->where('scheduled_at', '>=', now()->startOfDay())
+                ->with(['anchor', 'scheduler', 'contentOwner', 'creativeOwner'])
+                ->orderBy('scheduled_at')
+                ->limit(4)
+                ->get()
+                ->map(function (Interview $interview) {
+                    $start = $interview->scheduled_at;
+                    $end = $start?->copy()->addMinutes($interview->duration_minutes ?: 45);
+
+                    return [
+                        'id' => "interview-{$interview->id}",
+                        'title' => $interview->title,
+                        'when' => $start && $end ? $start->format('D j M').' · '.$this->timeRange($start, $end) : 'Not scheduled',
+                        'people' => $this->people([$interview->anchor, $interview->scheduler, $interview->contentOwner, $interview->creativeOwner]),
+                        'place' => $interview->mode === 'google_meet'
+                            ? 'On Google Meet'
+                            : ($interview->location ? 'At '.$interview->location : 'In person'),
+                        'tag' => $interview->kind->label(),
+                        'url' => "/interviews/{$interview->id}",
+                    ];
+                })->all();
+        }
+
+        if ($panels['sales'] || $panels['leads']) {
+            $tabs['calls'] = FollowUp::with(['client:id,name', 'lead:id,name', 'deal:id,title', 'owner'])
+                ->where('user_id', $user->id)
+                ->pending()
+                ->whereDate('due_on', '>=', now())
+                ->orderBy('due_on')
+                ->limit(4)
+                ->get()
+                ->map(fn (FollowUp $followUp) => [
+                    'id' => "follow-up-{$followUp->id}",
+                    'title' => $followUp->deal?->title ?? $followUp->lead?->name ?? $followUp->client?->name ?? 'Follow-up',
+                    'when' => $followUp->due_on?->format('D j M') ?? '',
+                    'people' => $this->people([$followUp->owner]),
+                    'place' => $followUp->due_on?->isToday() ? 'Due today' : 'Due '.$followUp->due_on?->diffForHumans(),
+                    'tag' => Str::headline($followUp->channel ?? 'call'),
+                    'url' => '/follow-ups',
+                ])->all();
+        }
+
+        if ($panels['content'] || $panels['creative']) {
+            $deadlines = new Collection;
+
+            if ($panels['content']) {
+                $deadlines = $deadlines->concat(
+                    $this->scope(Article::query(), $user, 'articles', self::ARTICLE_COLUMNS)
+                        ->open()->whereDate('due_on', '>=', now())->with('writer')
+                        ->orderBy('due_on')->limit(4)->get()
+                        ->map(fn (Article $article) => [
+                            'id' => "article-{$article->id}",
+                            'title' => $article->title,
+                            'due' => $article->due_on,
+                            'people' => $this->people([$article->writer]),
+                            'place' => $article->stage->label(),
+                            'tag' => 'Article',
+                            'url' => "/articles/{$article->id}",
+                        ]),
+                );
+            }
+
+            if ($panels['creative']) {
+                $deadlines = $deadlines->concat(
+                    Deliverable::visibleTo($user)
+                        ->open()->whereDate('due_on', '>=', now())->with('assignee')
+                        ->orderBy('due_on')->limit(4)->get()
+                        ->map(fn (Deliverable $deliverable) => [
+                            'id' => "deliverable-{$deliverable->id}",
+                            'title' => $deliverable->title ?: $deliverable->kind->label(),
+                            'due' => $deliverable->due_on,
+                            'people' => $this->people([$deliverable->assignee]),
+                            'place' => $deliverable->stage->label(),
+                            'tag' => $deliverable->kind->label(),
+                            'url' => "/deliverables/{$deliverable->id}",
+                        ]),
+                );
+            }
+
+            $tabs['deadlines'] = $deadlines->sortBy('due')->take(4)->map(function (array $item) {
+                /** @var Carbon $due */
+                $due = $item['due'];
+                unset($item['due']);
+
+                return [...$item, 'when' => 'Due '.$due->format('D j M')];
+            })->values()->all();
+        }
+
+        return $tabs;
+    }
+
+    /** "8:00 – 8:45 AM", or "11:30 AM – 12:15 PM" across noon. */
+    private function timeRange(Carbon $start, Carbon $end): string
+    {
+        return $start->format('A') === $end->format('A')
+            ? $start->format('g:i').' – '.$end->format('g:i A')
+            : $start->format('g:i A').' – '.$end->format('g:i A');
+    }
+
+    /**
+     * @param  array<int, User|null>  $users
+     * @return list<array<string, string|null>>
+     */
+    private function people(array $users): array
+    {
+        return (new Collection($users))->filter()->unique('id')
+            ->map(fn (User $person) => $this->person($person))->values()->all();
+    }
+
+    /** @return array<string, string|null> */
+    private function person(User $user): array
+    {
+        return ['name' => $user->name, 'initials' => $user->initials(), 'avatar_url' => $user->avatarUrl()];
+    }
+
+    /** The colour of a status pill, by what the stage means rather than its name. */
+    private function stageTone(string $stage): string
+    {
+        return match ($stage) {
+            'conducted', 'handed_over', 'in_content', 'published', 'approved', 'won' => 'success',
+            'cancelled', 'no_show', 'rejected', 'lost' => 'danger',
+            'scheduled', 'rescheduled', 'internal_review', 'revisions', 'review', 'pending' => 'warning',
+            default => 'info',
+        };
     }
 
     /**

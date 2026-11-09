@@ -78,7 +78,7 @@ routes. There is no JSON API layer and no SSR — nothing here is crawled.
 
 ```bash
 composer install
-npm install                 # also publishes DM Sans into public/
+npm install                 # also publishes Inter into public/
 cp .env.example .env
 php artisan key:generate
 
@@ -174,8 +174,8 @@ shared to Inertia, so the sidebar can never offer a page that then answers 403.
 
 ## Theme
 
-The palette is inherited verbatim from takecareconnect.com: navy `#283A8E`,
-DM Sans, `--radius: 0.75rem`. `resources/css/app.css` holds every token as bare
+Blue `#335CFF` on white, Inter (self-hosted, declared in `app.blade.php`),
+hairline `#E1E4EA` borders, `--radius: 0.75rem`. `resources/css/app.css` holds every token as bare
 HSL channels; `tailwind.config.js` maps them to utility names.
 
 **The one rule: never put a literal colour in a component.** Every surface is

@@ -1,41 +1,7 @@
 /*
- |----------------------------------------------------------------------
- | DM Sans — self-hosted
- |----------------------------------------------------------------------
- | Files come from the @fontsource/dm-sans npm package and are copied into
- | public/fonts/dm-sans by scripts/publish-fonts.mjs. Declared by hand rather
- | than imported from the package so the URLs stay stable and can be
- | <link rel="preload">-ed from app.blade.php.
- |
- | Hosted from this app's own public/ rather than borrowed from
- | takecareconnect.com: the admin must not go unstyled because the public site
- | is down or mid-deploy.
- |
- | DM Sans is the ONLY font family this app loads.
+ | Inter is the only font family this app loads. Its @font-face rules live in
+ | resources/views/app.blade.php, not here — see the note there for why.
  */
-@font-face {
-    font-family: 'DM Sans';
-    font-style: normal;
-    font-weight: 400;
-    font-display: swap;
-    src: url('/fonts/dm-sans/dm-sans-latin-400-normal.woff2') format('woff2');
-}
-
-@font-face {
-    font-family: 'DM Sans';
-    font-style: normal;
-    font-weight: 500;
-    font-display: swap;
-    src: url('/fonts/dm-sans/dm-sans-latin-500-normal.woff2') format('woff2');
-}
-
-@font-face {
-    font-family: 'DM Sans';
-    font-style: normal;
-    font-weight: 700;
-    font-display: swap;
-    src: url('/fonts/dm-sans/dm-sans-latin-700-normal.woff2') format('woff2');
-}
 
 @tailwind base;
 @tailwind components;
@@ -50,13 +16,13 @@
      | noted for reference only — never paste a hex into a component.
      */
     :root {
-        /* ── Inherited verbatim from takecareconnect.com — do not drift ───── */
+        /* ── Base palette: blue #335CFF on white, hairline #E1E4EA borders ── */
         --background: 0 0% 100%; /* #FFFFFF */
-        --foreground: 229.3 35% 15.7%; /* #1A1F36 body text */
-        --surface: 220.1 42.9% 97.3%; /* #F5F7FB */
+        --foreground: 221 32% 8%; /* #0E121B strong text */
+        --surface: 216 33% 97%; /* #F5F7FA */
 
-        --primary: 229.4 56.1% 35.7%; /* #283A8E logo navy */
-        --primary-dark: 229.1 56.2% 26.9%; /* #1E2C6B hover */
+        --primary: 228 100% 60%; /* #335CFF */
+        --primary-dark: 228 70% 48%; /* #2547D0 hover */
         --primary-foreground: 0 0% 100%;
 
         --accent: 355.5 77.6% 56.3%; /* #E63946 */
@@ -66,21 +32,21 @@
         --success: 156 62% 28%; /* #1B7350 */
         --success-foreground: 0 0% 100%;
 
-        --muted: 220.1 42.9% 97.3%;
-        --muted-foreground: 226 14.3% 41.2%; /* #5A6178 */
+        --muted: 216 33% 97%;
+        --muted-foreground: 222 11% 36%; /* #525866 sub text */
 
         --card: 0 0% 100%;
-        --card-foreground: 229.3 35% 15.7%;
+        --card-foreground: 221 32% 8%;
 
         --popover: 0 0% 100%;
-        --popover-foreground: 229.3 35% 15.7%;
+        --popover-foreground: 221 32% 8%;
 
         --destructive: 355.5 77.6% 56.3%;
         --destructive-foreground: 0 0% 100%;
 
-        --border: 220 28.6% 91.8%;
-        --input: 220 28.6% 91.8%;
-        --ring: 229.4 56.1% 35.7%;
+        --border: 220 18% 90%; /* #E1E4EA */
+        --input: 220 18% 90%;
+        --ring: 228 100% 60%;
 
         --radius: 0.75rem; /* rounded-xl cards, as on the site */
 
@@ -93,7 +59,7 @@
          | is a desk, and a card needs something to sit on. Deliberately the
          | same value as --surface so the two can never drift apart.
          */
-        --app: 220.1 42.9% 97.3%; /* #F5F7FB */
+        --app: 0 0% 100%; /* white: cards are separated by their hairline border */
 
         /*
          | The scrim behind a modal.
@@ -120,14 +86,14 @@
          | the brand navy compete with itself.
          */
         --sidebar: 0 0% 100%;
-        --sidebar-deep: 220.1 42.9% 97.3%; /* nav-group wells, hover surfaces */
-        --sidebar-foreground: 224 21% 28%; /* #384056 resting item */
-        --sidebar-heading: 229.3 35% 15.7%; /* the product name */
-        --sidebar-section: 226 14% 52%; /* the uppercase section captions */
-        --sidebar-hover: 220 43% 97%;
-        --sidebar-active: 219 100% 96%; /* #E8F0FF soft brand tint */
-        --sidebar-active-foreground: 229.4 56.1% 35.7%; /* = --primary */
-        --sidebar-border: 219 33% 94%;
+        --sidebar-deep: 216 33% 97%; /* nav-group wells, hover surfaces */
+        --sidebar-foreground: 222 11% 36%; /* #525866 resting item */
+        --sidebar-heading: 221 32% 8%; /* the product name */
+        --sidebar-section: 220 11% 64%; /* #99A0AE uppercase section captions */
+        --sidebar-hover: 216 33% 97%;
+        --sidebar-active: 216 33% 97%; /* #F5F7FA grey pill; the blue is the edge marker */
+        --sidebar-active-foreground: 221 32% 8%; /* strong text */
+        --sidebar-border: 220 18% 90%;
 
         /*
          | Amber.
@@ -161,7 +127,7 @@
         --stage-cold: 213 82% 68%;
         --stage-warm: 217 84% 60%;
         --stage-qualified: 221 75% 50%;
-        --stage-proposal: 229.4 56.1% 35.7%; /* = --primary */
+        --stage-proposal: 228 100% 60%; /* = --primary */
         --stage-won: 156 62% 28%; /* = --success */
         --stage-lost: 355.5 77.6% 56.3%; /* = --destructive */
 
@@ -196,7 +162,7 @@
         --stage-rejected: 355.5 77.6% 56.3%;
 
         /* Chart series, in brand order. All AA against --card. */
-        --chart-1: 229.4 56.1% 35.7%;
+        --chart-1: 228 100% 60%;
         --chart-2: 199 78% 42%;
         --chart-3: 156 62% 28%;
         --chart-4: 32 94% 38%;
@@ -239,8 +205,8 @@
         /* Same scrim, a touch stronger: it has less to darken. */
         --overlay: 229 50% 3%;
 
-        --primary: 229 66% 64%;
-        --primary-dark: 229 66% 72%;
+        --primary: 228 100% 68%;
+        --primary-dark: 228 100% 76%;
         --primary-foreground: 229 45% 10%;
 
         --accent: 355.5 80% 64%;
@@ -271,7 +237,7 @@
 
         --border: 226 30% 20%;
         --input: 226 30% 20%;
-        --ring: 229 66% 64%;
+        --ring: 228 100% 68%;
 
         --sidebar: 226 44% 10%;
         --sidebar-deep: 229 45% 8%;
@@ -279,15 +245,15 @@
         --sidebar-heading: 0 0% 100%;
         --sidebar-section: 220 14% 56%;
         --sidebar-hover: 226 38% 16%;
-        --sidebar-active: 229 48% 22%;
-        --sidebar-active-foreground: 229 80% 80%;
+        --sidebar-active: 226 38% 16%;
+        --sidebar-active-foreground: 0 0% 100%;
         --sidebar-border: 226 30% 18%;
 
         --stage-intake: 220 14% 60%;
         --stage-cold: 213 82% 70%;
         --stage-warm: 217 84% 66%;
         --stage-qualified: 221 78% 64%;
-        --stage-proposal: 229 66% 64%;
+        --stage-proposal: 228 100% 68%;
         --stage-won: 156 52% 48%;
         --stage-lost: 355.5 80% 64%;
 
@@ -312,7 +278,7 @@
         --stage-approved: 156 52% 48%;
         --stage-rejected: 355.5 80% 64%;
 
-        --chart-1: 229 66% 64%;
+        --chart-1: 228 100% 68%;
         --chart-2: 199 74% 58%;
         --chart-3: 156 52% 48%;
         --chart-4: 38 92% 58%;
@@ -344,7 +310,7 @@
     h2,
     h3,
     h4 {
-        @apply font-bold tracking-tight;
+        @apply font-semibold tracking-tight;
         text-wrap: balance;
     }
 

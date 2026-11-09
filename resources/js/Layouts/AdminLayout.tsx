@@ -1,8 +1,9 @@
 import { usePage } from '@inertiajs/react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CommandPalette } from '@/Components/layout/CommandPalette';
 import { Sidebar } from '@/Components/layout/Sidebar';
 import { Topbar } from '@/Components/layout/Topbar';
+import { TopbarSlotContext } from '@/Components/layout/TopbarSlot';
 import { useToast } from '@/Components/ui/toast';
 import type { SharedProps } from '@/types';
 
@@ -18,6 +19,12 @@ import type { SharedProps } from '@/types';
 export function AdminLayout({ children }: { children: ReactNode }) {
     const [navOpen, setNavOpen] = useState(false);
     const [searchOpen, setSearchOpen] = useState(false);
+
+    // The top bar's two portal targets, held in state rather than refs so a page
+    // rendering <TopbarHeading> re-renders once they exist.
+    const [titleTarget, setTitleTarget] = useState<HTMLElement | null>(null);
+    const [actionsTarget, setActionsTarget] = useState<HTMLElement | null>(null);
+    const slots = useMemo(() => ({ title: titleTarget, actions: actionsTarget }), [titleTarget, actionsTarget]);
     const { url, props } = usePage<SharedProps>();
     const { notify } = useToast();
 
@@ -64,6 +71,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     }, []);
 
     return (
+        <TopbarSlotContext.Provider value={slots}>
         <div className="min-h-screen bg-app">
             <a href="#main" className="skip-link">
                 Skip to content
@@ -72,8 +80,13 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
 
             {/* Offset by the rail's width from lg: up, full width below it. */}
-            <div className="lg:pl-64">
-                <Topbar onOpenNav={() => setNavOpen(true)} onOpenSearch={() => setSearchOpen(true)} />
+            <div className="lg:pl-[272px]">
+                <Topbar
+                    onOpenNav={() => setNavOpen(true)}
+                    onOpenSearch={() => setSearchOpen(true)}
+                    titleRef={setTitleTarget}
+                    actionsRef={setActionsTarget}
+                />
 
                 {/*
                   | A ceiling on the content width.
@@ -84,13 +97,14 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                   | stranded from the left — which reads as an empty page
                   | rather than a spacious one.
                 */}
-                <main id="main" className="mx-auto w-full max-w-[90rem] px-4 py-6 lg:px-6 lg:py-8">
+                <main id="main" className="mx-auto w-full max-w-[90rem] px-4 py-6 lg:px-8 lg:py-6">
                     {children}
                 </main>
             </div>
 
             <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
         </div>
+        </TopbarSlotContext.Provider>
     );
 }
 

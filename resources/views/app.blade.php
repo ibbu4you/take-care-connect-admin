@@ -7,7 +7,7 @@
 
     {{-- Staff tooling. Nothing here should ever appear in a search result. --}}
     <meta name="robots" content="noindex, nofollow">
-    <meta name="theme-color" content="#283A8E">
+    <meta name="theme-color" content="#335CFF">
 
     {{--
       | The TCIF seal, rasterised from public/img/logo.webp.
@@ -21,12 +21,25 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
     {{--
-      | Preloaded because DM Sans is the only family the app loads and every
-      | screen is text. The paths match the @font-face rules in app.css exactly;
-      | a mismatch here downloads the file twice rather than failing loudly.
+      | Inter, self-hosted from public/fonts/inter (see scripts/publish-fonts.mjs).
+      |
+      | Declared here rather than in app.css on purpose. A url() inside a
+      | stylesheet resolves against wherever that stylesheet was served from,
+      | and in development that is the Vite server, which does not serve
+      | public/ — so every font 404'd until somebody ran a production build.
+      | Declared in the page, /fonts/... always means this app's own origin.
+      |
+      | The two weights nearly every screen uses are preloaded; the paths must
+      | match the src below exactly, or the file is downloaded twice.
     --}}
-    <link rel="preload" href="/fonts/dm-sans/dm-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="preload" href="/fonts/dm-sans/dm-sans-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/inter/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/inter/inter-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <style>
+        @font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/inter/inter-latin-400-normal.woff2') format('woff2'); }
+        @font-face { font-family: 'Inter'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/inter/inter-latin-500-normal.woff2') format('woff2'); }
+        @font-face { font-family: 'Inter'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/inter/inter-latin-600-normal.woff2') format('woff2'); }
+        @font-face { font-family: 'Inter'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/inter/inter-latin-700-normal.woff2') format('woff2'); }
+    </style>
 
     {{--
       | Theme applied before first paint.
