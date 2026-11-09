@@ -6,12 +6,16 @@ import {
     Globe,
     Mail,
     MapPin,
+    MessageCircle,
     MessageSquare,
     Pencil,
     Phone,
+    PhoneCall,
+    StickyNote,
     Trash2,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { Pill, type Tone } from '@/Components/dashboard/parts';
 import { PageHeader } from '@/Components/layout/PageHeader';
 import { StageBadge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -19,8 +23,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
 import { ConfirmDialog, Dialog } from '@/Components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/Components/ui/input';
 import { Avatar, EmptyState } from '@/Components/ui/misc';
+import { usePermissions } from '@/hooks/usePermissions';
 import { adminLayout } from '@/Layouts/AdminLayout';
 import { dateTime, money, relative } from '@/lib/format';
+import { cn } from '@/lib/utils';
+import { introMessage, whatsappLink } from '@/lib/whatsapp';
 
 interface Option {
     value: string;
@@ -57,14 +64,38 @@ interface ShowProps {
         converted_client: { id: number; name: string } | null;
         is_overdue: boolean;
         timeline: Array<{ id: number; body: string; author: string | null; created_at: string | null }>;
+        calls: Array<{
+            id: number;
+            outcome: string;
+            outcome_label: string;
+            connected: boolean;
+            note: string | null;
+            caller: string | null;
+            called_at: string | null;
+        }>;
     };
     statuses: Option[];
+    outcomes: Outcome[];
     can: { update: boolean; convert: boolean; delete: boolean };
 }
 
-export default function LeadShow({ lead, statuses, can }: ShowProps) {
+interface Outcome {
+    value: string;
+    label: string;
+    connected: boolean;
+    retry_days: number | null;
+}
+
+export default function LeadShow({ lead, statuses, outcomes, can }: ShowProps) {
+    const { user } = usePermissions();
     const [converting, setConverting] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
+
+    const whatsapp = whatsappLink(
+        lead.whatsapp ?? lead.phone,
+        introMessage({ contact: lead.contact_person, business: lead.name, sender: user?.name ?? 'the team' }),
+    );
+    const connectedCalls = lead.calls.filter((call) => call.connected).length;
 
     return (
         <div className="space-y-6">
@@ -119,38 +150,9 @@ export default function LeadShow({ lead, statuses, can }: ShowProps) {
 
             <div className="grid gap-6 lg:grid-cols-3">
                 <div className="space-y-6 lg:col-span-2">
-                    {can.update && <LogCard leadId={lead.id} nextActionOn={lead.next_action_on} />}
+                    {can.update && <LogCard leadId={lead.id} nextActionOn={lead.next_action_on} outcomes={outcomes} />}
 
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Contact log</CardTitle>
-                        </CardHeader>
-
-                        {lead.timeline.length === 0 ? (
-                            <EmptyState
-                                icon={MessageSquare}
-                                title="Nothing logged yet"
-                                description="Every call, message and visit goes here. It is what makes a lead worth keeping."
-                            />
-                        ) : (
-                            <ol className="divide-y divide-border">
-                                {lead.timeline.map((entry) => (
-                                    <li key={entry.id} className="px-5 py-3">
-                                        <p className="whitespace-pre-wrap text-sm">{entry.body}</p>
-                                        <p className="mt-1 text-xs text-muted-foreground">
-                                            {entry.author ?? 'Someone'}
-                                            {entry.created_at && (
-                                                <span title={dateTime(entry.created_at)}>
-                                                    {' · '}
-                                                    {relative(entry.created_at)}
-                                                </span>
-                                            )}
-                                        </p>
-                                    </li>
-                                ))}
-                            </ol>
-                        )}
-                    </Card>
+                    <History lead={lead} />
 
                     {lead.notes && (
                         <Card>
@@ -190,6 +192,32 @@ export default function LeadShow({ lead, statuses, can }: ShowProps) {
                         <CardContent className="space-y-3 text-sm">
                             {lead.contact_person && (
                                 <p className="font-medium">{lead.contact_person}</p>
+                            )}
+
+                            {(lead.phone || whatsapp) && (
+                                <div className="grid grid-cols-2 gap-2">
+                                    {lead.phone && (
+                                        <Button asChild variant="outline" size="sm" className="rounded-lg">
+                                            <a href={`tel:${lead.phone}`}>
+                                                <Phone />
+                                                Call
+                                            </a>
+                                        </Button>
+                                    )}
+                                    {whatsapp && (
+                                        <Button
+                                            asChild
+                                            variant="outline"
+                                            size="sm"
+                                            className="rounded-lg border-success/30 text-success hover:bg-success/10 hover:text-success"
+                                        >
+                                            <a href={whatsapp} target="_blank" rel="noreferrer">
+                                                <MessageCircle />
+                                                WhatsApp
+                                            </a>
+                                        </Button>
+                                    )}
+                                </div>
                             )}
                             {lead.phone && (
                                 <ContactLine icon={Phone}>
@@ -244,7 +272,12 @@ export default function LeadShow({ lead, statuses, can }: ShowProps) {
                             <Detail label="Worth">
                                 {lead.estimated_value !== null ? money(lead.estimated_value) : '—'}
                             </Detail>
-                            <Detail label="Last contact">
+                            <Detail label="Calls">
+                                <span className="tabular">
+                                    {lead.calls.length} made · {connectedCalls} connected
+                                </span>
+                            </Detail>
+                            <Detail label="Last spoke">
                                 {lead.last_contacted_at ? relative(lead.last_contacted_at) : 'Never'}
                             </Detail>
                             <Detail label="Added by">{lead.creator?.name ?? '—'}</Detail>
@@ -281,67 +314,284 @@ export default function LeadShow({ lead, statuses, can }: ShowProps) {
 /* ───────────────────────────────────────────────────────────────────────── */
 
 /**
- * Logging a conversation.
+ * Logging a call, or a note.
+ *
+ * ── Why the outcome is a button, not a sentence ───────────────────────────
+ * "How many calls got through today" can only be answered if the outcome is a
+ * value. One tap records it; the note is optional, for when there is something
+ * worth writing.
  *
  * ── Why the next call is on the same form ──────────────────────────────────
- * The moment somebody finishes a call is the only moment they know when to ring
- * back, and it is the moment they are least willing to open a second form. Two
- * fields, one button: what happened, and when to try again.
+ * The moment somebody puts the phone down is the only moment they know when to
+ * ring back, and the moment they are least willing to open a second form. So
+ * choosing an outcome fills in its usual retry — tomorrow for no answer, two
+ * days for "call back" — and the caller only has to change it if they know
+ * better. "Not interested" clears it: chasing them is the wrong default.
  */
-function LogCard({ leadId, nextActionOn }: { leadId: number; nextActionOn: string | null }) {
-    const { data, setData, post, processing, errors, reset } = useForm({
-        body: '',
-        next_action_on: nextActionOn ?? '',
-    });
+function LogCard({
+    leadId,
+    nextActionOn,
+    outcomes,
+}: {
+    leadId: number;
+    nextActionOn: string | null;
+    outcomes: Outcome[];
+}) {
+    const [mode, setMode] = useState<'call' | 'note'>('call');
+
+    const call = useForm({ outcome: '', note: '', next_action_on: nextActionOn ?? '' });
+    const note = useForm({ body: '', next_action_on: nextActionOn ?? '' });
+
+    function choose(outcome: Outcome) {
+        call.setData((data) => ({
+            ...data,
+            outcome: outcome.value,
+            next_action_on: outcome.retry_days === null ? '' : daysFromToday(outcome.retry_days),
+        }));
+    }
+
+    const connected = outcomes.filter((outcome) => outcome.connected);
+    const missed = outcomes.filter((outcome) => !outcome.connected);
 
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Log a call</CardTitle>
+                <CardTitle>Log</CardTitle>
+                <div className="inline-flex h-8 items-center rounded-lg bg-muted p-0.5" role="radiogroup" aria-label="What to log">
+                    {(
+                        [
+                            ['call', 'A call', PhoneCall],
+                            ['note', 'A note', StickyNote],
+                        ] as const
+                    ).map(([key, label, Icon]) => (
+                        <button
+                            key={key}
+                            type="button"
+                            role="radio"
+                            aria-checked={mode === key}
+                            onClick={() => setMode(key)}
+                            className={cn(
+                                'inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors',
+                                mode === key ? 'bg-card text-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground',
+                            )}
+                        >
+                            <Icon className="size-3.5" aria-hidden="true" />
+                            {label}
+                        </button>
+                    ))}
+                </div>
             </CardHeader>
 
             <CardContent>
-                <form
-                    className="space-y-3"
-                    onSubmit={(event) => {
-                        event.preventDefault();
-                        post(`/leads/${leadId}/notes`, {
-                            preserveScroll: true,
-                            onSuccess: () => reset('body'),
-                        });
-                    }}
-                >
-                    <Field label="What happened?" htmlFor="body" error={errors.body}>
-                        <Textarea
-                            id="body"
-                            rows={3}
-                            value={data.body}
-                            onChange={(event) => setData('body', event.target.value)}
-                            placeholder="Spoke to the owner. Wants a quote for six reels before Diwali."
-                        />
-                    </Field>
+                {mode === 'call' ? (
+                    <form
+                        className="space-y-4"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            call.post(`/leads/${leadId}/calls`, {
+                                preserveScroll: true,
+                                onSuccess: () => call.setData((data) => ({ ...data, outcome: '', note: '' })),
+                            });
+                        }}
+                    >
+                        <fieldset>
+                            <legend className="mb-2 text-sm font-medium">What happened?</legend>
+                            <OutcomeGroup label="Spoke to them" outcomes={connected} value={call.data.outcome} onChoose={choose} />
+                            <OutcomeGroup label="Did not get through" outcomes={missed} value={call.data.outcome} onChoose={choose} />
+                            {call.errors.outcome && <p className="mt-1 text-xs font-medium text-destructive">{call.errors.outcome}</p>}
+                        </fieldset>
 
-                    <div className="flex flex-wrap items-end gap-3">
-                        <Field
-                            label="Call back on"
-                            htmlFor="next_action_on"
-                            error={errors.next_action_on}
-                            className="w-44"
-                        >
-                            <Input
-                                id="next_action_on"
-                                type="date"
-                                value={data.next_action_on}
-                                onChange={(event) => setData('next_action_on', event.target.value)}
+                        <Field label="Anything worth writing down?" htmlFor="call_note" error={call.errors.note} hint="Optional.">
+                            <Textarea
+                                id="call_note"
+                                rows={2}
+                                value={call.data.note}
+                                onChange={(event) => call.setData('note', event.target.value)}
+                                placeholder="Owner is keen. Wants to be interviewed after the festival rush."
                             />
                         </Field>
 
-                        <Button type="submit" loading={processing} disabled={!data.body.trim()}>
-                            Log it
-                        </Button>
-                    </div>
-                </form>
+                        <div className="flex flex-wrap items-end gap-3">
+                            <Field
+                                label="Next call"
+                                htmlFor="call_next"
+                                error={call.errors.next_action_on}
+                                hint={call.data.next_action_on ? undefined : 'No next call.'}
+                                className="w-44"
+                            >
+                                <Input
+                                    id="call_next"
+                                    type="date"
+                                    value={call.data.next_action_on}
+                                    onChange={(event) => call.setData('next_action_on', event.target.value)}
+                                />
+                            </Field>
+
+                            <Button type="submit" loading={call.processing} disabled={!call.data.outcome}>
+                                Log call
+                            </Button>
+                        </div>
+                    </form>
+                ) : (
+                    <form
+                        className="space-y-3"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            note.post(`/leads/${leadId}/notes`, {
+                                preserveScroll: true,
+                                onSuccess: () => note.reset('body'),
+                            });
+                        }}
+                    >
+                        <Field label="Note" htmlFor="body" error={note.errors.body}>
+                            <Textarea
+                                id="body"
+                                rows={3}
+                                value={note.data.body}
+                                onChange={(event) => note.setData('body', event.target.value)}
+                                placeholder="Met them at the Pongal market. Runs the shop with her two sons."
+                            />
+                        </Field>
+
+                        <div className="flex flex-wrap items-end gap-3">
+                            <Field label="Call back on" htmlFor="note_next" error={note.errors.next_action_on} className="w-44">
+                                <Input
+                                    id="note_next"
+                                    type="date"
+                                    value={note.data.next_action_on}
+                                    onChange={(event) => note.setData('next_action_on', event.target.value)}
+                                />
+                            </Field>
+
+                            <Button type="submit" loading={note.processing} disabled={!note.data.body.trim()}>
+                                Save note
+                            </Button>
+                        </div>
+                    </form>
+                )}
             </CardContent>
+        </Card>
+    );
+}
+
+function OutcomeGroup({
+    label,
+    outcomes,
+    value,
+    onChoose,
+}: {
+    label: string;
+    outcomes: Outcome[];
+    value: string;
+    onChoose: (outcome: Outcome) => void;
+}) {
+    return (
+        <div className="mb-3">
+            <p className="mb-1.5 text-xs text-muted-foreground">{label}</p>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={label}>
+                {outcomes.map((outcome) => (
+                    <button
+                        key={outcome.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={value === outcome.value}
+                        onClick={() => onChoose(outcome)}
+                        className={cn(
+                            'h-8 rounded-full border px-3 text-xs font-medium transition-colors',
+                            value === outcome.value
+                                ? 'border-primary bg-primary text-primary-foreground'
+                                : 'border-border bg-card text-foreground hover:border-primary/40 hover:bg-primary/5',
+                        )}
+                    >
+                        {outcome.label}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+/** YYYY-MM-DD, in the browser's own day — what a date input expects. */
+function daysFromToday(days: number): string {
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+
+    return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+}
+
+function outcomeTone(outcome: string): Tone {
+    if (outcome === 'interested') return 'success';
+    if (outcome === 'call_back') return 'info';
+    if (outcome === 'not_interested' || outcome === 'wrong_number') return 'danger';
+    return 'neutral';
+}
+
+/**
+ * Calls and notes in one history, newest first.
+ *
+ * Two lists would make the reader interleave them in their head to answer
+ * "what happened last time" — which is the only question the history exists for.
+ */
+function History({ lead }: { lead: ShowProps['lead'] }) {
+    const entries = useMemo(
+        () =>
+            [
+                ...lead.calls.map((call) => ({ kind: 'call' as const, key: `call-${call.id}`, at: call.called_at, call })),
+                ...lead.timeline.map((entry) => ({ kind: 'note' as const, key: `note-${entry.id}`, at: entry.created_at, entry })),
+            ].sort((a, b) => (b.at ?? '').localeCompare(a.at ?? '')),
+        [lead.calls, lead.timeline],
+    );
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>History</CardTitle>
+            </CardHeader>
+
+            {entries.length === 0 ? (
+                <EmptyState
+                    icon={MessageSquare}
+                    title="Nothing logged yet"
+                    description="Every call, message and visit goes here. It is what makes a lead worth keeping."
+                />
+            ) : (
+                <ol className="divide-y divide-border">
+                    {entries.map((item) => (
+                        <li key={item.key} className="flex gap-3 px-5 py-3">
+                            <span
+                                className={cn(
+                                    'mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full',
+                                    item.kind === 'call' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
+                                )}
+                                aria-hidden="true"
+                            >
+                                {item.kind === 'call' ? <PhoneCall className="size-3.5" /> : <StickyNote className="size-3.5" />}
+                            </span>
+
+                            <div className="min-w-0 flex-1">
+                                {item.kind === 'call' ? (
+                                    <>
+                                        <Pill tone={outcomeTone(item.call.outcome)}>{item.call.outcome_label}</Pill>
+                                        {item.call.note && <p className="mt-1.5 whitespace-pre-wrap text-sm">{item.call.note}</p>}
+                                    </>
+                                ) : (
+                                    <p className="whitespace-pre-wrap text-sm">{item.entry.body}</p>
+                                )}
+
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    {(item.kind === 'call' ? item.call.caller : item.entry.author) ?? 'Someone'}
+                                    {item.at && (
+                                        <span title={dateTime(item.at)}>
+                                            {' · '}
+                                            {relative(item.at)}
+                                        </span>
+                                    )}
+                                </p>
+                            </div>
+                        </li>
+                    ))}
+                </ol>
+            )}
         </Card>
     );
 }

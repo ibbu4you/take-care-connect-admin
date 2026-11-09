@@ -157,7 +157,7 @@ export default function UsersIndex({ users, filters, roles, counts }: UsersIndex
                                 </THead>
                                 <TBody>
                                     {users.data.map((person) => (
-                                        <TR key={person.id}>
+                                        <TR key={person.id} href={person.can.edit ? `/users/${person.id}/edit` : undefined}>
                                             <TD>
                                                 <div className="flex items-center gap-3">
                                                     <Avatar

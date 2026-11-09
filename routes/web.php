@@ -11,9 +11,13 @@ use App\Http\Controllers\DealController;
 use App\Http\Controllers\DeliverableController;
 use App\Http\Controllers\DeliverableFileController;
 use App\Http\Controllers\FollowUpController;
+use App\Http\Controllers\ImpactController;
 use App\Http\Controllers\InterviewAssetController;
 use App\Http\Controllers\InterviewController;
+use App\Http\Controllers\InterviewMessageController;
+use App\Http\Controllers\LeadCallController;
 use App\Http\Controllers\LeadController;
+use App\Http\Controllers\LeadImportController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\ProfileController;
@@ -126,6 +130,9 @@ Route::middleware(['auth', 'active', '2fa'])->group(function () {
             ->name('interviews.store');
 
         Route::get('/interviews/{interview}', [InterviewController::class, 'show'])->name('interviews.show');
+        Route::post('/interviews/{interview}/messages/{message}', [InterviewMessageController::class, 'store'])
+            ->whereIn('message', InterviewMessageController::MESSAGES)
+            ->name('interviews.messages');
 
         Route::post('/interviews/{interview}/conduct', [InterviewController::class, 'conduct'])->name('interviews.conduct');
         Route::post('/interviews/{interview}/handover', [InterviewController::class, 'handover'])->name('interviews.handover');
@@ -254,6 +261,12 @@ Route::middleware(['auth', 'active', '2fa'])->group(function () {
         ->middleware('permission:reports.view.all')
         ->name('reports.performance');
 
+    // Organisation-wide, so the same gate as Performance.
+    Route::middleware('permission:reports.view.all')->group(function () {
+        Route::get('/reports/impact', ImpactController::class)->name('reports.impact');
+        Route::get('/reports/impact/export', [ImpactController::class, 'export'])->name('reports.impact.export');
+    });
+
     /*
      | Leads — the people a manager is talking to who are not clients yet.
      |
@@ -272,6 +285,12 @@ Route::middleware(['auth', 'active', '2fa'])->group(function () {
             ->middleware('permission:leads.export')
             ->name('leads.export');
 
+        Route::middleware('permission:leads.import')->group(function () {
+            Route::get('/leads/import', [LeadImportController::class, 'create'])->name('leads.import');
+            Route::get('/leads/import/template', [LeadImportController::class, 'template'])->name('leads.import.template');
+            Route::post('/leads/import', [LeadImportController::class, 'store'])->name('leads.import.store');
+        });
+
         Route::post('/leads', [LeadController::class, 'store'])
             ->middleware('permission:leads.create')
             ->name('leads.store');
@@ -283,6 +302,7 @@ Route::middleware(['auth', 'active', '2fa'])->group(function () {
             Route::patch('/leads/{lead}', [LeadController::class, 'update'])->name('leads.update');
             Route::patch('/leads/{lead}/status', [LeadController::class, 'status'])->name('leads.status');
             Route::post('/leads/{lead}/notes', [LeadController::class, 'addNote'])->name('leads.notes');
+            Route::post('/leads/{lead}/calls', [LeadCallController::class, 'store'])->name('leads.calls');
         });
 
         Route::post('/leads/{lead}/convert', [LeadController::class, 'convert'])

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+import { TopbarHeading } from './TopbarSlot';
 
 export interface PageHeaderProps {
     title: string;
@@ -15,15 +16,25 @@ export interface PageHeaderProps {
     className?: string;
 }
 
+/**
+ * A page's title, description and main actions — rendered in the top bar.
+ *
+ * Every page used to repeat its title as a large heading under the bar, which
+ * spent a fifth of a laptop screen saying the same thing twice. Now the bar is
+ * the heading. On a phone the bar has no room for the description or the
+ * buttons, so those two render here, in the page, instead.
+ */
 export function PageHeader({ title, subtitle, actions, className }: PageHeaderProps) {
     return (
-        <div className={cn('flex flex-wrap items-start justify-between gap-4', className)}>
-            <div className="min-w-0">
-                <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{title}</h1>
-                {subtitle && <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{subtitle}</p>}
-            </div>
+        <>
+            <TopbarHeading title={title} description={subtitle} actions={actions} />
 
-            {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
-        </div>
+            {(subtitle || actions) && (
+                <div className={cn('phone-only space-y-3', className)}>
+                    {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
+                    {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+                </div>
+            )}
+        </>
     );
 }

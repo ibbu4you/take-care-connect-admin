@@ -8,6 +8,7 @@ use App\Models\Deliverable;
 use App\Models\FollowUp;
 use App\Models\Interview;
 use App\Models\Lead;
+use App\Models\LeadCall;
 use App\Models\Note;
 use App\Models\StageEvent;
 use App\Models\Target;
@@ -483,8 +484,14 @@ class DashboardController extends Controller
     private function todos(User $user, array $panels): array
     {
         if (! $panels['sales'] && $panels['leads']) {
+            $today = LeadCall::where('user_id', $user->id)->whereDate('called_at', now());
+
             return [
                 'kind' => 'calls',
+                'stats' => [
+                    'today' => (clone $today)->count(),
+                    'connected' => (clone $today)->connected()->count(),
+                ],
                 'items' => $this->callList($user)->limit(3)->get()->map(function (Lead $lead) {
                     $due = $lead->next_action_on;
 

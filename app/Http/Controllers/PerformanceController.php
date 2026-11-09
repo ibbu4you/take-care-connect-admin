@@ -6,6 +6,8 @@ use App\Models\Article;
 use App\Models\Deal;
 use App\Models\Deliverable;
 use App\Models\Interview;
+use App\Models\Lead;
+use App\Models\LeadCall;
 use App\Models\Target;
 use App\Models\User;
 use App\Support\Roles;
@@ -60,6 +62,7 @@ class PerformanceController extends Controller
             'writers' => $this->writers($from, $to),
             'creatives' => $this->creatives($from, $to),
             'managers' => $this->managers($from, $to),
+            'callers' => $this->callers($from, $to),
         ]);
     }
 
@@ -218,6 +221,46 @@ class PerformanceController extends Controller
      * @param  Collection<int, array<string, mixed>>  $rows
      * @return array{rows: list<array<string, mixed>>, median: float|null}
      */
+    /**
+     * Everybody who works the phones: telecallers, and relationship managers,
+     * who call leads too.
+     *
+     * "Connected" is the figure that matters, not "calls": forty calls with
+     * three conversations is a bad list or a bad hour, not a hard-working day,
+     * and the connect rate is what tells those apart.
+     *
+     * @return array<string, mixed>
+     */
+    private function callers(Carbon $from, Carbon $to): array
+    {
+        $people = $this->withRole(Roles::TELECALLER)
+            ->concat($this->withRole(Roles::RELATIONSHIP_MANAGER))
+            ->unique('id')
+            ->values();
+
+        return $this->table(
+            $people->map(function (User $person) use ($from, $to): array {
+                $calls = LeadCall::where('user_id', $person->id)->whereBetween('called_at', [$from, $to]);
+
+                $made = (clone $calls)->count();
+                $connected = (clone $calls)->connected()->count();
+
+                return [
+                    ...$this->person($person),
+                    'done' => $made,
+                    'connected' => $connected,
+                    'rate' => $made > 0 ? (int) round($connected / $made * 100) : null,
+                    'interested' => (clone $calls)->where('outcome', 'interested')->count(),
+                    'booked' => Interview::where('scheduled_by', $person->id)->whereBetween('created_at', [$from, $to])->count(),
+                    'open' => Lead::where('owner_id', $person->id)->open()->count(),
+                    'overdue' => Lead::where('owner_id', $person->id)->open()
+                        ->whereNotNull('next_action_on')->whereDate('next_action_on', '<', now())->count(),
+                    'turnaround' => null,
+                ];
+            }),
+        );
+    }
+
     private function table(Collection $rows): array
     {
         $turnarounds = $rows

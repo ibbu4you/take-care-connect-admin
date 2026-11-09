@@ -196,7 +196,7 @@ export default function ProjectShow({ project, statuses, can }: ShowProps) {
                                     </THead>
                                     <TBody>
                                         {project.interviews.map((interview) => (
-                                            <TR key={interview.id}>
+                                            <TR key={interview.id} href={`/interviews/${interview.id}`}>
                                                 <TD>
                                                     <Link
                                                         href={`/interviews/${interview.id}`}
@@ -242,7 +242,7 @@ export default function ProjectShow({ project, statuses, can }: ShowProps) {
                                     </THead>
                                     <TBody>
                                         {project.deals.map((deal) => (
-                                            <TR key={deal.id}>
+                                            <TR key={deal.id} href={`/deals/${deal.id}`}>
                                                 <TD>
                                                     <Link
                                                         href={`/deals/${deal.id}`}

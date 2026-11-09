@@ -159,7 +159,7 @@ export default function ClientsIndex({ clients, filters, owners, counts, can }: 
                                 </THead>
                                 <TBody>
                                     {clients.data.map((client) => (
-                                        <TR key={client.id}>
+                                        <TR key={client.id} href={`/clients/${client.id}`}>
                                             <TD>
                                                 <Link href={`/clients/${client.id}`} className="block hover:text-primary">
                                                     <CellStack

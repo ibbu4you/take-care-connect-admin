@@ -4,17 +4,17 @@ import { stageMeta, type StageFamily } from '@/config/stages';
 import { cn } from '@/lib/utils';
 
 const badgeVariants = cva(
-    'inline-flex items-center gap-1.5 whitespace-nowrap rounded-control border px-2 py-0.5 text-xs font-medium',
+    'inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full border border-transparent px-2.5 text-xs font-medium',
     {
         variants: {
             tone: {
-                default: 'border-border bg-muted text-muted-foreground',
-                primary: 'border-primary/30 bg-primary/10 text-primary',
-                success: 'border-success/30 bg-success/15 text-success',
+                default: 'bg-muted text-muted-foreground',
+                primary: 'bg-primary/10 text-primary',
+                success: 'bg-success/10 text-success',
                 /* Waiting, not failing — see the note on --warning in app.css. */
-                warning: 'border-warning/30 bg-warning/15 text-warning',
-                danger: 'border-destructive/30 bg-destructive/15 text-destructive',
-                info: 'border-info/30 bg-info/15 text-info',
+                warning: 'bg-stage-review/10 text-stage-review',
+                danger: 'bg-destructive/10 text-destructive',
+                info: 'bg-info/10 text-info',
                 outline: 'border-border bg-transparent text-foreground',
             },
         },
@@ -53,8 +53,10 @@ export function StageBadge({ family, stage, dot = false, className, ...props }: 
     return (
         <span
             className={cn(
-                'inline-flex items-center gap-1.5 whitespace-nowrap rounded-control border px-2 py-0.5 text-xs font-medium',
+                'inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-xs font-medium',
                 meta.className,
+                // The stage tint is the signal; an outline on top only adds noise.
+                'border-transparent',
                 className,
             )}
             {...props}

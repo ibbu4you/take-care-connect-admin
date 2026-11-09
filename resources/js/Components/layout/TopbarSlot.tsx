@@ -33,8 +33,9 @@ export function TopbarHeading({
                 createPortal(
                     <div className="min-w-0">
                         <h1 className="truncate text-lg font-medium leading-7 tracking-tight">{title}</h1>
+                        {/* Two lines at most: some pages explain their scoping in a full sentence. */}
                         {description && (
-                            <p className="hidden truncate text-sm leading-5 text-muted-foreground sm:block">
+                            <p className="hidden max-w-4xl text-sm leading-5 text-muted-foreground line-clamp-2 sm:[display:-webkit-box]">
                                 {description}
                             </p>
                         )}

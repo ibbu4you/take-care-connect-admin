@@ -11,6 +11,7 @@ import {
     Link2,
     Mail,
     MapPin,
+    MessageCircle,
     Paperclip,
     Phone,
     Plus,
@@ -31,6 +32,7 @@ import { Avatar, EmptyState, SectionDivider } from '@/Components/ui/misc';
 import { adminLayout } from '@/Layouts/AdminLayout';
 import { bytes, dateTime, relative, sentenceList } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { confirmationMessage, reminderMessage, storyMessage, whatsappLink } from '@/lib/whatsapp';
 import type { SharedProps } from '@/types';
 
 interface Asset {
@@ -93,6 +95,8 @@ interface ShowProps {
         assets: Asset[];
         history: HistoryEntry[];
         missing_for_handover: string[];
+        messages: Record<MessageKey, { at: string; by: string | null } | null>;
+        story_url: string | null;
     };
     writers: Array<{ id: number; name: string }>;
     deliverableKinds: KindOption[];
@@ -115,8 +119,11 @@ interface ShowProps {
         cancel: boolean;
         upload: boolean;
         deleteAsset: boolean;
+        message: boolean;
     };
 }
+
+type MessageKey = 'confirmation' | 'reminder' | 'story';
 
 export default function InterviewShow({
     interview,
@@ -280,6 +287,8 @@ export default function InterviewShow({
 
                 <div className="space-y-6">
                     <DetailsCard interview={interview} />
+
+                    {can.message && <MessagesCard interview={interview} />}
 
                     <Card>
                         <CardHeader>
@@ -1068,6 +1077,143 @@ function CancelDialog({ open, onClose, interviewId }: { open: boolean; onClose: 
                 </Field>
             </div>
         </Dialog>
+    );
+}
+
+/* ─── Messages to the business ──────────────────────────────────────────── */
+
+const whenFormat = new Intl.DateTimeFormat('en-IN', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    hour: 'numeric',
+    minute: '2-digit',
+});
+
+/**
+ * The three WhatsApp messages a business gets: confirmation, reminder, and the
+ * link once their story is live.
+ *
+ * Each opens the team member's own WhatsApp with the message already written,
+ * and records that it went — so the next person can see it was sent, by whom,
+ * and does not send it twice. The app never sees the message itself; pressing
+ * Send is the record.
+ */
+function MessagesCard({ interview }: { interview: ShowProps['interview'] }) {
+    const { props } = usePage<SharedProps>();
+    const sender = props.auth.user?.name ?? 'the Take Care Connect team';
+    const open = !['cancelled', 'no_show'].includes(interview.stage);
+    const upcoming = ['scheduled', 'rescheduled'].includes(interview.stage);
+
+    const details = {
+        subject: interview.subject_name,
+        title: interview.title,
+        when: interview.scheduled_at ? whenFormat.format(new Date(interview.scheduled_at)) : 'the agreed time',
+        mode: interview.mode,
+        location: interview.location,
+        meetingUrl: interview.meeting_url,
+        anchor: interview.anchor?.name ?? null,
+        sender,
+    };
+
+    const rows: Array<{ key: MessageKey; title: string; hint: string; text: string | null }> = [
+        {
+            key: 'confirmation',
+            title: 'Confirmation',
+            hint: 'When it is booked.',
+            text: upcoming ? confirmationMessage(details) : null,
+        },
+        {
+            key: 'reminder',
+            title: 'Reminder',
+            hint: 'The day before.',
+            text: upcoming ? reminderMessage(details) : null,
+        },
+        {
+            key: 'story',
+            title: 'Story is live',
+            hint: interview.story_url ? 'Their link, to share.' : 'Once the story is published.',
+            text: interview.story_url ? storyMessage({ subject: interview.subject_name, url: interview.story_url, sender }) : null,
+        },
+    ];
+
+    const phone = interview.subject_phone;
+    const reachable = whatsappLink(phone, '') !== null;
+
+    function send(key: MessageKey, text: string) {
+        const link = whatsappLink(phone, text);
+
+        if (!link) {
+            return;
+        }
+
+        // Opened inside the click itself, before the request: a window opened
+        // after an await is treated as a popup and blocked.
+        window.open(link, '_blank', 'noopener');
+        router.post(`/interviews/${interview.id}/messages/${key}`, {}, { preserveScroll: true });
+    }
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Message the business</CardTitle>
+            </CardHeader>
+
+            <CardContent className="space-y-1">
+                {!reachable ? (
+                    <p className="text-sm text-muted-foreground">
+                        Add {interview.subject_name.split(' ')[0]}'s phone number to message them on WhatsApp.
+                    </p>
+                ) : !open ? (
+                    <p className="text-sm text-muted-foreground">This interview is off, so there is nothing to send.</p>
+                ) : (
+                    rows.map((row) => {
+                        const sent = interview.messages[row.key];
+
+                        return (
+                            <div key={row.key} className="flex items-center gap-3 border-b border-border py-2.5 last:border-0">
+                                <span
+                                    className={cn(
+                                        'inline-flex size-8 shrink-0 items-center justify-center rounded-full',
+                                        sent ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground',
+                                    )}
+                                    aria-hidden="true"
+                                >
+                                    {sent ? <CheckCircle2 className="size-4" /> : <MessageCircle className="size-4" />}
+                                </span>
+
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-medium">{row.title}</p>
+                                    <p className="truncate text-xs text-muted-foreground">
+                                        {sent ? (
+                                            <span title={dateTime(sent.at)}>
+                                                Sent {relative(sent.at)}
+                                                {sent.by ? ` by ${sent.by}` : ''}
+                                            </span>
+                                        ) : (
+                                            row.hint
+                                        )}
+                                    </p>
+                                </div>
+
+                                {row.text && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="rounded-lg border-success/30 text-success hover:bg-success/10 hover:text-success"
+                                        onClick={() => send(row.key, row.text as string)}
+                                    >
+                                        <MessageCircle />
+                                        {sent ? 'Again' : 'Send'}
+                                    </Button>
+                                )}
+                            </div>
+                        );
+                    })
+                )}
+            </CardContent>
+        </Card>
     );
 }
 

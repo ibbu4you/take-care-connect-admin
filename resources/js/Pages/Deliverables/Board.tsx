@@ -1,28 +1,26 @@
 import { Head, Link } from '@inertiajs/react';
 import {
     AlertTriangle,
-    CalendarClock,
     Clapperboard,
     ExternalLink,
     Film,
     Globe,
     Image as ImageIcon,
-    KanbanSquare,
-    LayoutList,
     Search,
     Send,
     X,
     type LucideIcon,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Pill, type Tone } from '@/Components/dashboard/parts';
+import { Pill } from '@/Components/dashboard/parts';
 import { TopbarHeading } from '@/Components/layout/TopbarSlot';
+import { ViewSwitch } from '@/Components/work/ViewSwitch';
 import { Card } from '@/Components/ui/card';
 import { Avatar, EmptyState } from '@/Components/ui/misc';
 import { stageMeta } from '@/config/stages';
 import { usePermissions } from '@/hooks/usePermissions';
 import { adminLayout } from '@/Layouts/AdminLayout';
-import { due } from '@/lib/format';
+import { deliverableTiming } from '@/lib/deliverables';
 import { cn } from '@/lib/utils';
 
 export interface DeliverableRow {
@@ -110,12 +108,12 @@ export default function DeliverableBoard({ columns, rejected, counts }: BoardPro
             <TopbarHeading
                 title="Creative board"
                 description="Posters, reels and edits, by where they have got to."
-                actions={<ViewSwitch />}
+                actions={<ViewSwitch current="board" boardHref="/deliverables/board" listHref="/deliverables" />}
             />
 
             {/* The top bar hides its buttons on a phone; the view switch lives here instead. */}
-            <div className="sm:hidden">
-                <ViewSwitch />
+            <div className="phone-only">
+                <ViewSwitch current="board" boardHref="/deliverables/board" listHref="/deliverables" />
             </div>
 
             <Summary counts={counts} mine={mine} onToggleMine={() => setMine((value) => !value)} />
@@ -199,28 +197,6 @@ export default function DeliverableBoard({ columns, rejected, counts }: BoardPro
 }
 
 /* ─── Header pieces ─────────────────────────────────────────────────────── */
-
-/** Board | List, as one control — the two views of the same work. */
-function ViewSwitch() {
-    return (
-        <div className="inline-flex h-10 items-center rounded-lg border border-border bg-muted p-1" role="group" aria-label="View">
-            <span
-                className="inline-flex h-8 items-center gap-1.5 rounded-md bg-card px-3 text-sm font-medium shadow-xs"
-                aria-current="page"
-            >
-                <KanbanSquare className="size-4 text-primary" aria-hidden="true" />
-                Board
-            </span>
-            <Link
-                href="/deliverables"
-                className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-            >
-                <LayoutList className="size-4" aria-hidden="true" />
-                List
-            </Link>
-        </div>
-    );
-}
 
 function Summary({
     counts,
@@ -385,36 +361,9 @@ function Lane({ stage, label, items }: { stage: string; label: string; items: De
     );
 }
 
-const dayMonth = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short' });
-
-/**
- * What the date on a card should say, given where the work is.
- *
- * "70d overdue" on something already posted is noise, and on approved work it
- * blames the creative for a wait that is now somebody else's — so only work
- * still being made is held to its due date.
- */
-function timing(item: DeliverableRow): { label: string; tone: Tone; icon: LucideIcon } {
-    if (item.stage === 'published') {
-        return { label: item.published_at ? `Posted ${dayMonth.format(new Date(item.published_at))}` : 'Posted', tone: 'success', icon: Globe };
-    }
-
-    if (item.stage === 'approved' || item.stage === 'scheduled') {
-        return { label: item.stage === 'scheduled' ? 'Queued to post' : 'Ready to post', tone: 'info', icon: Send };
-    }
-
-    const deadline = due(item.due_on);
-
-    return {
-        label: deadline.label,
-        tone: deadline.tone === 'muted' ? 'neutral' : deadline.tone,
-        icon: CalendarClock,
-    };
-}
-
 export function DeliverableCard({ deliverable }: { deliverable: DeliverableRow }) {
     const Icon = deliverable.is_video ? Film : ImageIcon;
-    const when = timing(deliverable);
+    const when = deliverableTiming(deliverable);
     const WhenIcon = when.icon;
 
     return (

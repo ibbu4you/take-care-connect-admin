@@ -3,11 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Lead;
+use App\Models\LeadCall;
 use App\Models\Note;
 use App\Models\User;
 use App\Services\CodeGenerator;
 use App\Services\LeadConverter;
 use App\Support\Roles;
+use App\Support\Workflow\CallOutcome;
 use App\Support\Workflow\LeadSource;
 use App\Support\Workflow\LeadStatus;
 use Illuminate\Database\Eloquent\Builder;
@@ -45,6 +47,7 @@ class LeadController extends Controller
 
         $leads = $this->scoped($request->user())
             ->with('owner:id,name')
+            ->withCount('calls')
             ->when($filters['search'] !== '', function (Builder $query) use ($filters) {
                 $term = "%{$filters['search']}%";
                 $digits = preg_replace('/\D+/', '', $filters['search']);
@@ -100,6 +103,7 @@ class LeadController extends Controller
             'can' => [
                 'create' => $request->user()->can('leads.create'),
                 'export' => $request->user()->can('leads.export'),
+                'import' => $request->user()->can('leads.import'),
             ],
         ]);
     }
@@ -141,6 +145,7 @@ class LeadController extends Controller
             'convertedClient:id,name',
             'timeline.author:id,name',
             'followUps.owner:id,name',
+            'calls.caller:id,name',
         ]);
 
         return Inertia::render('Leads/Show', [
@@ -166,6 +171,16 @@ class LeadController extends Controller
                     'created_at' => $note->created_at?->toIso8601String(),
                 ]),
 
+                'calls' => $lead->calls->map(fn (LeadCall $call) => [
+                    'id' => $call->id,
+                    'outcome' => $call->outcome->value,
+                    'outcome_label' => $call->outcome->label(),
+                    'connected' => $call->outcome->connected(),
+                    'note' => $call->note,
+                    'caller' => $call->caller?->name,
+                    'called_at' => $call->called_at?->toIso8601String(),
+                ]),
+
                 'follow_ups' => $lead->followUps->map(fn ($followUp) => [
                     'id' => $followUp->id,
                     'due_on' => $followUp->due_on?->toDateString(),
@@ -176,6 +191,7 @@ class LeadController extends Controller
             ],
 
             'statuses' => LeadStatus::options(),
+            'outcomes' => CallOutcome::options(),
             'can' => [
                 'update' => $request->user()->can('update', $lead),
                 'convert' => $request->user()->can('convert', $lead),
@@ -410,6 +426,9 @@ class LeadController extends Controller
             'next_action_on' => $lead->next_action_on?->toDateString(),
             'days_since_contact' => $lead->daysSinceContact(),
             'is_overdue' => $lead->isOverdue(),
+            // Only present where the query asked for it (the list); the page
+            // that shows one lead counts its own calls.
+            'calls_count' => $lead->calls_count ?? null,
             'created_at' => $lead->created_at?->toIso8601String(),
             'can' => ['edit' => $actor->can('update', $lead)],
         ];

@@ -7,6 +7,7 @@ use App\Models\Deal;
 use App\Models\Deliverable;
 use App\Models\FollowUp;
 use App\Models\Interview;
+use App\Models\Lead;
 use App\Models\User;
 use App\Support\Notifier;
 use App\Support\Settings;
@@ -112,6 +113,22 @@ class RemindersCommand extends Command
         $today = now()->startOfDay();
 
         return collect([
+            $this->item(
+                Lead::where('owner_id', $person->getKey())->due()->count(),
+                'a lead is due a call',
+                fn (int $n) => "{$n} leads due a call",
+            ),
+            $this->item(
+                // Tomorrow's interviews nobody has reminded the business about,
+                // addressed to whoever booked them.
+                Interview::where('scheduled_by', $person->getKey())
+                    ->whereDate('scheduled_at', now()->addDay())
+                    ->whereIn('stage', ['scheduled', 'rescheduled'])
+                    ->whereNull('reminder_sent_at')
+                    ->count(),
+                'a business needs reminding about tomorrow\'s interview',
+                fn (int $n) => "{$n} businesses need reminding about tomorrow's interviews",
+            ),
             $this->item(
                 FollowUp::where('user_id', $person->getKey())->due()->count(),
                 'a follow-up is due',

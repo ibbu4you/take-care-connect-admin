@@ -7,6 +7,7 @@ import {
     FileText,
     FolderKanban,
     Handshake,
+    HeartHandshake,
     Inbox,
     LayoutDashboard,
     Mic,
@@ -192,6 +193,16 @@ export const NAV: NavItem[] = [
         icon: BarChart3,
         section: 'Reports',
         permissions: ['reports.view', 'reports.view.all'],
+    },
+    {
+        // What the work added up to: businesses reached and featured. First in
+        // the section's organisation-wide reports, because it is the one a
+        // trustee or donor asks for.
+        label: 'Impact',
+        href: '/reports/impact',
+        icon: HeartHandshake,
+        section: 'Reports',
+        permissions: ['reports.view.all'],
     },
     {
         label: 'Performance',

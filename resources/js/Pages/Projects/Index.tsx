@@ -208,7 +208,7 @@ export default function ProjectsIndex({
                                 </THead>
                                 <TBody>
                                     {projects.data.map((project) => (
-                                        <TR key={project.id}>
+                                        <TR key={project.id} href={`/projects/${project.id}`}>
                                             <TD>
                                                 <Link
                                                     href={`/projects/${project.id}`}

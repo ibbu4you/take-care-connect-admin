@@ -74,6 +74,9 @@ class Interview extends Model
             'consent_to_publish' => 'boolean',
             'requires_article' => 'boolean',
             'requires_social' => 'boolean',
+            'confirmation_sent_at' => 'datetime',
+            'reminder_sent_at' => 'datetime',
+            'story_sent_at' => 'datetime',
             'duration_minutes' => 'integer',
         ];
     }

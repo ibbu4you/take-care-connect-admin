@@ -75,6 +75,8 @@ interface DashboardProps {
     activity: { scope: 'team' | 'mine'; end: string; days: number[] };
     todos: {
         kind: 'followups' | 'calls' | 'notes';
+        /** Present for the call list: today's calls by this person. */
+        stats?: { today: number; connected: number };
         items: Array<{
             id: number;
             title: string;
@@ -648,6 +650,26 @@ function TodoCard({ todos }: { todos: DashboardProps['todos'] }) {
 
     return (
         <DashCard icon={copy.icon} title={copy.title} action={copy.action}>
+            {todos.stats && (
+                <div className="mb-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border">
+                    <div className="bg-card px-3 py-2">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted-foreground">Calls today</p>
+                        <p className="text-lg font-medium tabular">{todos.stats.today}</p>
+                    </div>
+                    <div className="bg-card px-3 py-2">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.04em] text-muted-foreground">Connected</p>
+                        <p className="text-lg font-medium tabular">
+                            {todos.stats.connected}
+                            {todos.stats.today > 0 && (
+                                <span className="ml-1 text-xs font-normal text-muted-foreground">
+                                    {Math.round((todos.stats.connected / todos.stats.today) * 100)}%
+                                </span>
+                            )}
+                        </p>
+                    </div>
+                </div>
+            )}
+
             {todos.items.length === 0 ? (
                 <CardEmpty icon={copy.icon}>{copy.empty}</CardEmpty>
             ) : (

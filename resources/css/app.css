@@ -372,6 +372,43 @@
     }
 
     /*
+     | The chevron on a native <select>.
+     |
+     | An inline SVG so it needs no request and no icon inside a native
+     | control. A data URI cannot read a CSS variable, so the dark theme gets
+     | its own lighter stroke.
+     */
+    .select-field {
+        background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23525866' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+        background-position: right 0.6rem center;
+        background-repeat: no-repeat;
+        background-size: 16px;
+    }
+
+    .dark .select-field {
+        background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2399A0AE' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+    }
+
+    /*
+     | A block that exists only on a phone (PageHeader's description and buttons,
+     | which the top bar has no room for there).
+     |
+     | Hidden from `sm:` up — but a `space-y-*` parent still gives whatever
+     | follows it a top margin, as if it were there, which opened a 24px gap
+     | above every page. `!important` because Tailwind's space-y selector is
+     | more specific than any single class.
+     */
+    .phone-only {
+        @apply sm:hidden;
+    }
+
+    @media (min-width: 640px) {
+        .phone-only + * {
+            margin-top: 0 !important;
+        }
+    }
+
+    /*
      | Lining, fixed-width digits for anything that stacks in a column: money,
      | counts, dates in a table. Without it a column of figures ripples.
      */

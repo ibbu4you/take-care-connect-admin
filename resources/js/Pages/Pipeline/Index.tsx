@@ -1,7 +1,8 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { AlertTriangle, Handshake, LayoutGrid, Plus, Search, Target as TargetIcon, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Handshake, Plus, Search, Target as TargetIcon, TrendingUp } from 'lucide-react';
 import { useState } from 'react';
 import { StatCard, StatGrid } from '@/Components/data/StatCard';
+import { ViewSwitch } from '@/Components/work/ViewSwitch';
 import { PageHeader } from '@/Components/layout/PageHeader';
 import { Badge, StageBadge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -55,12 +56,7 @@ export default function DealsIndex({ deals, filters, stages, owners, clients, su
                 subtitle="Every deal, open and closed. The board shows only what is still live."
                 actions={
                     <>
-                        <Button asChild variant="outline">
-                            <Link href="/pipeline">
-                                <LayoutGrid />
-                                Board view
-                            </Link>
-                        </Button>
+                        <ViewSwitch current="list" boardHref="/pipeline" listHref="/deals" />
 
                         {can.create && (
                             <Button onClick={() => setAdding(true)}>
@@ -179,7 +175,7 @@ export default function DealsIndex({ deals, filters, stages, owners, clients, su
                                 </THead>
                                 <TBody>
                                     {deals.data.map((deal) => (
-                                        <TR key={deal.id}>
+                                        <TR key={deal.id} href={`/deals/${deal.id}`}>
                                             <TD>
                                                 <Link href={`/deals/${deal.id}`} className="block hover:text-primary">
                                                     <CellStack

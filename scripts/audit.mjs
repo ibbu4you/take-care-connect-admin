@@ -66,6 +66,7 @@ const MODULES = [
         pages: [
             { path: '/leads', label: 'Lead list', allow: ['Admin', 'Relationship Manager', 'Telecaller'] },
             { path: '/leads/create', label: 'Add lead', allow: ['Admin', 'Relationship Manager', 'Telecaller'] },
+            { path: '/leads/import', label: 'Import leads', allow: ['Admin', 'Relationship Manager', 'Telecaller'] },
         ],
     },
     {
@@ -138,6 +139,7 @@ const MODULES = [
         pages: [
             { path: '/reports', label: 'Reports', allow: 'all' },
             { path: '/reports/performance', label: 'Performance', allow: ['Admin', 'Content'] },
+            { path: '/reports/impact', label: 'Impact', allow: ['Admin', 'Content'] },
         ],
     },
     {

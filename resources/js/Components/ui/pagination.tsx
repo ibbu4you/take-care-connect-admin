@@ -64,7 +64,7 @@ export function Pagination({ paginator, className }: PaginationProps) {
     );
 }
 
-const CELL = 'inline-flex h-8 min-w-8 items-center justify-center rounded-control px-2 text-xs font-medium';
+const CELL = 'inline-flex h-8 min-w-8 items-center justify-center rounded-lg px-2 text-xs font-medium';
 
 function PageLink({ url, active, label }: { url: string | null; active: boolean; label: string }) {
     // Laravel emits "..." as an unlinked label for elided page ranges.

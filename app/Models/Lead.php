@@ -161,4 +161,14 @@ class Lead extends Model
     {
         return $this->morphMany(Note::class, 'notable')->latest();
     }
+
+    /**
+     * Every call made to this lead, newest first.
+     *
+     * @return HasMany<LeadCall, $this>
+     */
+    public function calls(): HasMany
+    {
+        return $this->hasMany(LeadCall::class)->latest('called_at');
+    }
 }

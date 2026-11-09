@@ -1,8 +1,16 @@
 import { forwardRef, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 
+/*
+ | One focus state for every field: a blue border and a soft 3px halo.
+ |
+ | `ring-offset-0` matters. The global :focus-visible rule in app.css gives
+ | buttons and links a 2px offset ring for keyboard users; inherited by a field
+ | it opened a white gap between the border and the halo, which read as two
+ | rings.
+ */
 const FIELD =
-    'w-full rounded-control border border-input bg-card text-sm text-foreground shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60';
+    'w-full rounded-lg border border-input bg-card text-sm text-foreground shadow-xs transition-[border-color,box-shadow] placeholder:text-muted-foreground hover:border-muted-foreground/40 focus-visible:border-primary focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/15 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-60';
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
     /** A leading icon, inset in the field. */
@@ -21,7 +29,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
                     FIELD,
                     'h-9 px-3 py-1',
                     icon && 'pl-9',
-                    invalid && 'border-destructive focus-visible:ring-destructive',
+                    invalid && 'border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15',
                     className,
                 )}
                 {...props}
@@ -60,7 +68,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
             className={cn(
                 FIELD,
                 'px-3 py-2',
-                invalid && 'border-destructive focus-visible:ring-destructive',
+                invalid && 'border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15',
                 className,
             )}
             {...props}
@@ -87,11 +95,14 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             aria-invalid={invalid || undefined}
             className={cn(
                 FIELD,
-                'h-9 cursor-pointer appearance-none bg-[length:16px] bg-[right_0.6rem_center] bg-no-repeat px-3 pr-9',
-                // Chevron as an inline data URI so it needs no network request
-                // and no icon component inside a native control.
-                "bg-[url(\"data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%235A6178' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E\")]",
-                invalid && 'border-destructive focus-visible:ring-destructive',
+                // The chevron lives in app.css (.select-field), not in a class
+                // here. As an arbitrary Tailwind value it held spaces, so it was
+                // never a valid class: the arrow never rendered, and
+                // tailwind-merge misread it as a background colour and dropped
+                // bg-card — which left every select on the browser's own fill,
+                // a grey block in the dark theme.
+                'select-field h-9 cursor-pointer appearance-none px-3 pr-9',
+                invalid && 'border-destructive focus-visible:border-destructive focus-visible:ring-destructive/15',
                 className,
             )}
             {...props}

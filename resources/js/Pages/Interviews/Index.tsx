@@ -183,7 +183,7 @@ export default function InterviewsIndex({ interviews, filters, kinds, stages, an
                                 </THead>
                                 <TBody>
                                     {interviews.data.map((interview) => (
-                                        <TR key={interview.id}>
+                                        <TR key={interview.id} href={`/interviews/${interview.id}`}>
                                             <TD>
                                                 <Link
                                                     href={`/interviews/${interview.id}`}

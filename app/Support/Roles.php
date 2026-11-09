@@ -216,7 +216,7 @@ final class Roles
                 'view', 'create', 'update', 'convert', 'import', 'export',
             ]),
             ...Permissions::only('clients', [
-                'view', 'create', 'update', 'import', 'export',
+                'view', 'create', 'update', 'export',
             ]),
             ...Permissions::only('projects', ['view', 'create', 'update']),
             ...Permissions::only('deals', [

@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { BarChart3, Clapperboard, FileText, Handshake, Mic, Users } from 'lucide-react';
+import { BarChart3, Clapperboard, FileText, Handshake, Mic, PhoneCall, Users } from 'lucide-react';
 import type { ComponentType, ReactNode } from 'react';
 import { PageHeader } from '@/Components/layout/PageHeader';
 import { Button } from '@/Components/ui/button';
@@ -33,6 +33,7 @@ interface PerformanceProps {
     writers: Group;
     creatives: Group;
     managers: Group;
+    callers: Group;
 }
 
 export default function Performance({
@@ -42,6 +43,7 @@ export default function Performance({
     writers,
     creatives,
     managers,
+    callers,
 }: PerformanceProps) {
     return (
         <div className="space-y-6">
@@ -143,6 +145,23 @@ export default function Performance({
                 ]}
                 windowLabel={period.label}
                 note="Rework counts work sent back. A high number is more often a vague brief than a careless editor."
+            />
+
+            <Section
+                title="Calling"
+                icon={PhoneCall}
+                group={callers}
+                unit={null}
+                columns={[
+                    { key: 'done', label: 'Calls', align: 'right' },
+                    { key: 'connected', label: 'Connected', align: 'right' },
+                    { key: 'rate', label: 'Connect rate', align: 'right', format: (v) => `${v}%` },
+                    { key: 'interested', label: 'Interested', align: 'right' },
+                    { key: 'booked', label: 'Interviews booked', align: 'right' },
+                    { key: 'overdue', label: 'Calls overdue', align: 'right', alarm: true },
+                ]}
+                windowLabel={period.label}
+                note="Open is the leads each person owns that are still in play. Connect rate is the share of calls where somebody picked up and spoke — a low one is more often a stale list than a slow caller."
             />
 
             <Section

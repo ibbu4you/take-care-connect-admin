@@ -10,9 +10,10 @@ import {
     type DragStartEvent,
 } from '@dnd-kit/core';
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { AlertTriangle, Building2, Handshake, LayoutList, Plus, Target as TargetIcon, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Building2, Handshake, Plus, Target as TargetIcon, TrendingUp } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { StatCard, StatGrid } from '@/Components/data/StatCard';
+import { ViewSwitch } from '@/Components/work/ViewSwitch';
 import { PageHeader } from '@/Components/layout/PageHeader';
 import { Badge, StageBadge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -156,12 +157,7 @@ export default function PipelineBoard({ columns, summary, stages, clients, can }
                 subtitle="Open deals, by where they have got to. Drag a card to move it; closing one is a separate step because it writes revenue."
                 actions={
                     <>
-                        <Button asChild variant="outline">
-                            <Link href="/deals">
-                                <LayoutList />
-                                List view
-                            </Link>
-                        </Button>
+                        <ViewSwitch current="board" boardHref="/pipeline" listHref="/deals" />
                         {can.create && (
                             <Button onClick={() => setAdding(true)}>
                                 <Plus />

@@ -64,7 +64,6 @@ final class Permissions
                 'clients.update' => 'Edit a client',
                 'clients.delete' => 'Delete a client',
                 'clients.assign' => 'Move a client to a different owner',
-                'clients.import' => 'Import clients from a spreadsheet',
                 'clients.export' => 'Export the client list',
             ],
         ],

@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { CircleCheck, Download, PhoneCall, Plus, Search, UserSearch } from 'lucide-react';
+import { CircleCheck, Download, PhoneCall, Plus, Search, Upload, UserSearch } from 'lucide-react';
 import { useState } from 'react';
 import { StatCard, StatGrid } from '@/Components/data/StatCard';
 import { PageHeader } from '@/Components/layout/PageHeader';
@@ -31,6 +31,7 @@ export interface LeadRow {
     next_action_on: string | null;
     days_since_contact: number | null;
     is_overdue: boolean;
+    calls_count: number | null;
     created_at: string | null;
     can: { edit: boolean };
 }
@@ -42,7 +43,7 @@ interface IndexProps {
     sources: Array<{ value: string; label: string }>;
     owners: Array<{ id: number; name: string }>;
     counts: { open: number; due: number; qualified: number; converted_this_month: number };
-    can: { create: boolean; export: boolean };
+    can: { create: boolean; export: boolean; import: boolean };
 }
 
 export default function LeadsIndex({ leads, filters, statuses, sources, owners, counts, can }: IndexProps) {
@@ -65,6 +66,14 @@ export default function LeadsIndex({ leads, filters, statuses, sources, owners, 
                 subtitle="People you are talking to who are not clients yet. Convert one when they say yes — the lead stays, so you keep the record of how they were found."
                 actions={
                     <>
+                        {can.import && (
+                            <Button asChild variant="outline">
+                                <Link href="/leads/import">
+                                    <Upload />
+                                    Import
+                                </Link>
+                            </Button>
+                        )}
                         {can.export && (
                             <Button asChild variant="outline">
                                 <a href="/leads/export">
@@ -201,7 +210,7 @@ export default function LeadsIndex({ leads, filters, statuses, sources, owners, 
                                 </THead>
                                 <TBody>
                                     {leads.data.map((lead) => (
-                                        <TR key={lead.id}>
+                                        <TR key={lead.id} href={`/leads/${lead.id}`}>
                                             <TD>
                                                 <Link href={`/leads/${lead.id}`} className="block hover:text-primary">
                                                     <CellStack
@@ -294,12 +303,22 @@ const DUE_TONE = {
 } as const;
 
 function NextCall({ lead }: { lead: LeadRow }) {
+    // How many tries so far — the difference between "call them" and "this is
+    // the sixth attempt, maybe WhatsApp instead".
+    const attempts =
+        lead.calls_count !== null && lead.calls_count > 0 ? (
+            <span className="block text-xs text-muted-foreground tabular">
+                {lead.calls_count} {lead.calls_count === 1 ? 'call' : 'calls'} so far
+            </span>
+        ) : null;
+
     if (!lead.next_action_on) {
         return (
             <span className="text-sm text-muted-foreground">
                 {lead.days_since_contact === null
                     ? 'Never contacted'
                     : `${lead.days_since_contact}d since contact`}
+                {attempts}
             </span>
         );
     }
@@ -309,6 +328,7 @@ function NextCall({ lead }: { lead: LeadRow }) {
     return (
         <span className={cn('text-sm', lead.is_overdue ? DUE_TONE.danger : DUE_TONE[tone])}>
             {lead.status === 'converted' || lead.status === 'unqualified' ? date(lead.next_action_on) : label}
+            {attempts}
         </span>
     );
 }

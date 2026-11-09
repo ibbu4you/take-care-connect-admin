@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\ConductInterviewRequest;
 use App\Http\Requests\StoreInterviewRequest;
+use App\Models\Article;
 use App\Models\Client;
 use App\Models\Deliverable;
 use App\Models\Interview;
 use App\Models\Project;
+use App\Models\SocialPost;
 use App\Models\User;
 use App\Services\CodeGenerator;
 use App\Services\HandoverService;
@@ -244,6 +246,18 @@ class InterviewController extends Controller
                 // What is still missing before this can be handed over, computed
                 // server-side so the page never has to re-derive the rule.
                 'missing_for_handover' => $interview->missingForHandover(),
+
+                // Which WhatsApp messages the business has had, and from whom.
+                'messages' => $this->messagesSent($interview),
+
+                // The public link to send once their story is out: the article
+                // for a business interview, otherwise the first social post.
+                'story_url' => Article::where('interview_id', $interview->id)
+                    ->whereNotNull('published_url')
+                    ->value('published_url')
+                    ?? SocialPost::where('interview_id', $interview->id)
+                        ->orWhereIn('deliverable_id', $interview->deliverables()->pluck('id'))
+                        ->value('url'),
             ],
 
             'writers' => $this->writerOptions(),
@@ -275,8 +289,28 @@ class InterviewController extends Controller
                 'cancel' => $request->user()->can('cancel', $interview),
                 'upload' => $request->user()->can('uploadAssets', $interview),
                 'deleteAsset' => $request->user()->can('deleteAsset', $interview),
+                'message' => $request->user()->can('schedule', $interview) || $request->user()->can('update', $interview),
             ],
         ]);
+    }
+
+    /**
+     * @return array<string, array{at: string, by: string|null}|null>
+     */
+    private function messagesSent(Interview $interview): array
+    {
+        $sent = [];
+
+        foreach (['confirmation', 'reminder', 'story'] as $message) {
+            $at = $interview->{"{$message}_sent_at"};
+
+            $sent[$message] = $at === null ? null : [
+                'at' => $at->toIso8601String(),
+                'by' => User::whereKey($interview->{"{$message}_sent_by"})->value('name'),
+            ];
+        }
+
+        return $sent;
     }
 
     /** Mark conducted and record the context around it. */

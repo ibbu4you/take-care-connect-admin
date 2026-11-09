@@ -73,6 +73,8 @@ const ROUTES = [
     { path: '/dashboard', as: 'telecaller@takecareconnect.com' },
     { path: '/leads', as: 'telecaller@takecareconnect.com' },
     { path: '/interviews/create', as: 'telecaller@takecareconnect.com' },
+    { path: '/leads/import', as: 'telecaller@takecareconnect.com' },
+    { path: '/reports/impact', as: 'admin@takecareconnect.com' },
     { path: '/profile', as: 'anchor@takecareconnect.com' },
     { path: '/users', as: 'admin@takecareconnect.com' },
     { path: '/users/create', as: 'admin@takecareconnect.com' },

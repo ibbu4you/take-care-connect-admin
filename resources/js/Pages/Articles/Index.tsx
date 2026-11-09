@@ -136,7 +136,7 @@ export default function ArticlesIndex({ articles, filters, stages, writers, coun
                                         const deadline = due(article.due_on);
 
                                         return (
-                                            <TR key={article.id}>
+                                            <TR key={article.id} href={`/articles/${article.id}`}>
                                                 <TD>
                                                     <Link
                                                         href={`/articles/${article.id}`}
