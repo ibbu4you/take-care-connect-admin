@@ -30,7 +30,7 @@ export function NewDealDialog({
     const { data, setData, post, processing, errors, reset } = useForm({
         client_id: '',
         title: '',
-        stage: 'intake',
+        stage: 'new',
         expected_value: '',
         expected_close_on: '',
         notes: '',

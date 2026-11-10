@@ -29,30 +29,30 @@ export interface StageMeta {
 }
 
 export const PIPELINE_STAGES = {
-    intake: {
-        label: 'Intake',
-        className: 'bg-stage-intake/15 text-stage-intake border-stage-intake/30',
-        dot: 'bg-stage-intake',
+    new: {
+        label: 'New',
+        className: 'bg-stage-new/15 text-stage-new border-stage-new/30',
+        dot: 'bg-stage-new',
     },
-    cold: {
-        label: 'Cold',
-        className: 'bg-stage-cold/15 text-stage-cold border-stage-cold/30',
-        dot: 'bg-stage-cold',
+    contacted: {
+        label: 'Contacted',
+        className: 'bg-stage-contacted/15 text-stage-contacted border-stage-contacted/30',
+        dot: 'bg-stage-contacted',
     },
-    warm: {
-        label: 'Warm',
-        className: 'bg-stage-warm/15 text-stage-warm border-stage-warm/30',
-        dot: 'bg-stage-warm',
-    },
-    qualified: {
-        label: 'Qualified',
-        className: 'bg-stage-qualified/15 text-stage-qualified border-stage-qualified/30',
-        dot: 'bg-stage-qualified',
+    meeting: {
+        label: 'Meeting held',
+        className: 'bg-stage-meeting/15 text-stage-meeting border-stage-meeting/30',
+        dot: 'bg-stage-meeting',
     },
     proposal: {
-        label: 'Proposal',
+        label: 'Proposal sent',
         className: 'bg-stage-proposal/15 text-stage-proposal border-stage-proposal/30',
         dot: 'bg-stage-proposal',
+    },
+    negotiation: {
+        label: 'Negotiation',
+        className: 'bg-stage-negotiation/15 text-stage-negotiation border-stage-negotiation/30',
+        dot: 'bg-stage-negotiation',
     },
     won: {
         label: 'Won',
@@ -67,7 +67,7 @@ export const PIPELINE_STAGES = {
 } as const satisfies Record<string, StageMeta>;
 
 /** The board columns, in order. Won and lost are outcomes, not columns. */
-export const PIPELINE_COLUMNS = ['intake', 'cold', 'warm', 'qualified', 'proposal'] as const;
+export const PIPELINE_COLUMNS = ['new', 'contacted', 'meeting', 'proposal', 'negotiation'] as const;
 
 export const INTERVIEW_STAGES = {
     scheduled: {
@@ -197,8 +197,8 @@ export const DELIVERABLE_STAGES = {
 export const PROJECT_STATUSES = {
     open: {
         label: 'Open',
-        className: 'bg-stage-qualified/15 text-stage-qualified border-stage-qualified/30',
-        dot: 'bg-stage-qualified',
+        className: 'bg-stage-meeting/15 text-stage-meeting border-stage-meeting/30',
+        dot: 'bg-stage-meeting',
     },
     delivered: {
         label: 'Delivered',
@@ -230,23 +230,23 @@ export const PROJECT_STATUSES = {
 export const LEAD_STATUSES = {
     new: {
         label: 'New',
-        className: 'bg-stage-intake/15 text-stage-intake border-stage-intake/30',
-        dot: 'bg-stage-intake',
+        className: 'bg-stage-new/15 text-stage-new border-stage-new/30',
+        dot: 'bg-stage-new',
     },
     contacted: {
         label: 'Contacted',
-        className: 'bg-stage-cold/15 text-stage-cold border-stage-cold/30',
-        dot: 'bg-stage-cold',
+        className: 'bg-stage-contacted/15 text-stage-contacted border-stage-contacted/30',
+        dot: 'bg-stage-contacted',
     },
     interested: {
         label: 'Interested',
-        className: 'bg-stage-warm/15 text-stage-warm border-stage-warm/30',
-        dot: 'bg-stage-warm',
+        className: 'bg-stage-meeting/15 text-stage-meeting border-stage-meeting/30',
+        dot: 'bg-stage-meeting',
     },
     qualified: {
         label: 'Qualified',
-        className: 'bg-stage-qualified/15 text-stage-qualified border-stage-qualified/30',
-        dot: 'bg-stage-qualified',
+        className: 'bg-stage-proposal/15 text-stage-proposal border-stage-proposal/30',
+        dot: 'bg-stage-proposal',
     },
     unqualified: {
         label: 'Not a fit',

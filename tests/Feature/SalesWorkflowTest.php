@@ -121,7 +121,7 @@ class SalesWorkflowTest extends TestCase
             ->post('/deals', [
                 'client_id' => $client->id,
                 'title' => 'Three-interview package',
-                'stage' => 'intake',
+                'stage' => 'new',
                 'expected_value' => 145000,
             ])
             ->assertRedirect();
@@ -129,7 +129,7 @@ class SalesWorkflowTest extends TestCase
         $deal = Deal::firstOrFail();
 
         $this->assertSame($client->id, $deal->client_id);
-        $this->assertSame(PipelineStage::Intake, $deal->stage);
+        $this->assertSame(PipelineStage::New, $deal->stage);
         $this->assertStringStartsWith('DEA-', $deal->code);
     }
 
@@ -142,11 +142,11 @@ class SalesWorkflowTest extends TestCase
     {
         $deal = $this->deal();
 
-        $this->assertSame(PipelineStage::Intake->defaultProbability(), $deal->probability);
+        $this->assertSame(PipelineStage::New->defaultProbability(), $deal->probability);
 
-        $this->actingAs($this->manager())->post("/deals/{$deal->id}/move", ['stage' => 'proposal']);
+        $this->actingAs($this->manager())->post("/deals/{$deal->id}/move", ['stage' => 'contacted']);
 
-        $this->assertSame(PipelineStage::Proposal->defaultProbability(), $deal->fresh()->probability);
+        $this->assertSame(PipelineStage::Contacted->defaultProbability(), $deal->fresh()->probability);
     }
 
     public function test_a_deal_can_be_dragged_to_another_column(): void
@@ -154,10 +154,10 @@ class SalesWorkflowTest extends TestCase
         $deal = $this->deal();
 
         $this->actingAs($this->manager())
-            ->post("/deals/{$deal->id}/move", ['stage' => 'qualified'])
+            ->post("/deals/{$deal->id}/move", ['stage' => 'contacted'])
             ->assertRedirect();
 
-        $this->assertSame(PipelineStage::Qualified, $deal->fresh()->stage);
+        $this->assertSame(PipelineStage::Contacted, $deal->fresh()->stage);
     }
 
     /**
@@ -169,10 +169,10 @@ class SalesWorkflowTest extends TestCase
     {
         $deal = $this->deal();
 
-        $this->actingAs($this->manager())->post("/deals/{$deal->id}/move", ['stage' => 'proposal']);
-        $this->actingAs($this->manager())->post("/deals/{$deal->id}/move", ['stage' => 'cold']);
+        $this->actingAs($this->manager())->post("/deals/{$deal->id}/move", ['stage' => 'contacted']);
+        $this->actingAs($this->manager())->post("/deals/{$deal->id}/move", ['stage' => 'new']);
 
-        $this->assertSame(PipelineStage::Cold, $deal->fresh()->stage);
+        $this->assertSame(PipelineStage::New, $deal->fresh()->stage);
     }
 
     /** Moving is a separate permission from editing, so the board can be read-only. */
@@ -185,7 +185,7 @@ class SalesWorkflowTest extends TestCase
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         $this->actingAs($manager->fresh())
-            ->post("/deals/{$deal->id}/move", ['stage' => 'warm'])
+            ->post("/deals/{$deal->id}/move", ['stage' => 'contacted'])
             ->assertForbidden();
     }
 
@@ -259,12 +259,12 @@ class SalesWorkflowTest extends TestCase
     {
         $deal = $this->deal(['expected_value' => 100000]);
 
-        $this->actingAs($this->manager())->post("/deals/{$deal->id}/move", ['stage' => 'proposal']);
+        $this->actingAs($this->manager())->post("/deals/{$deal->id}/move", ['stage' => 'contacted']);
 
         $deal->refresh();
 
-        // 100,000 at proposal's 75%.
-        $this->assertEqualsWithDelta(75000, $deal->weightedValue(), 0.01);
+        // 100,000 at contacted's 15%.
+        $this->assertEqualsWithDelta(15000, $deal->weightedValue(), 0.01);
     }
 
     /** A closed deal contributes nothing to the open pipeline figure. */
@@ -448,7 +448,7 @@ class SalesWorkflowTest extends TestCase
             'code' => app(CodeGenerator::class)->next('DEA'),
             'client_id' => $this->client()->id,
             'title' => 'A package '.fake()->unique()->word(),
-            'stage' => PipelineStage::Intake,
+            'stage' => PipelineStage::New,
             'stage_entered_at' => now(),
             'owner_id' => $this->manager()->id,
             'expected_value' => 100000,

@@ -175,7 +175,10 @@ class HandoverService
             // A craftsman profile when there is a business behind it, an
             // ordinary blog post otherwise. The writer can change it.
             'target_type' => $interview->client_id !== null ? 'business' : 'post',
-            'status' => 'draft',
+            // No `status`: an article has one stage, and the public site's
+            // status is derived from it on export. A `'status' => 'draft'` here
+            // was silently dropped in the app (not fillable) but crashed
+            // DemoSeeder on a fresh install, where seeding runs unguarded.
         ]);
 
         $this->stages->recordCreation($article, $by, "Created from {$interview->code}");

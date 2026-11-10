@@ -2,43 +2,67 @@
 
 namespace App\Support\Workflow;
 
+use App\Services\DealStageRules;
+
 /**
- * The sales pipeline.
+ * The sales pipeline — named for what has actually happened with the buyer.
  *
- *   intake → cold → warm → qualified → proposal → won
- *                                              ↘ lost
+ *   new → contacted → meeting → proposal → negotiation → won
+ *                                                     ↘ lost
+ *
+ * ── Why these names ────────────────────────────────────────────────────────
+ * The first version used temperature words — cold, warm, qualified. Two
+ * salespeople would put the same deal in different columns, because "warm" is
+ * a feeling. Every stage here is a fact somebody can check: we have spoken to
+ * them; we have met them; a proposal went out; they are negotiating it. So the
+ * board means the same thing to whoever reads it, and the forecast built on it
+ * is worth something.
+ *
+ * Moving into a stage needs the thing that stage claims has happened — see
+ * {@see DealStageRules}.
  *
  * ── Why a deal can move backwards ──────────────────────────────────────────
- * Unlike the interview, article and creative workflows, this one allows a card
- * to move to *any* open stage. That is not laxness: a deal that looked
- * qualified and then went quiet genuinely is cold again, and a board that
- * refuses to let somebody drag it back is a board they will work around by
- * closing it as lost and opening a new one — which destroys the history the
- * board exists to keep.
- *
- * Won and lost are the only real constraints: they are outcomes, they write
- * revenue, and they are reached through a deliberate close rather than a drag.
+ * Any open stage can be reached from any other. A negotiation that stalls
+ * really is back to "contacted", and a board that refuses the drag is a board
+ * people work around by closing the deal and opening a new one — which
+ * destroys the history the board exists to keep. Won and lost are reached only
+ * through a deliberate close, because they write the figures targets are
+ * measured on.
  */
 enum PipelineStage: string implements Stage
 {
-    case Intake = 'intake';
-    case Cold = 'cold';
-    case Warm = 'warm';
-    case Qualified = 'qualified';
+    case New = 'new';
+    case Contacted = 'contacted';
+    case Meeting = 'meeting';
     case Proposal = 'proposal';
+    case Negotiation = 'negotiation';
     case Won = 'won';
     case Lost = 'lost';
 
     public function label(): string
     {
         return match ($this) {
-            self::Intake => 'Intake',
-            self::Cold => 'Cold',
-            self::Warm => 'Warm',
-            self::Qualified => 'Qualified',
-            self::Proposal => 'Proposal',
+            self::New => 'New',
+            self::Contacted => 'Contacted',
+            self::Meeting => 'Meeting held',
+            self::Proposal => 'Proposal sent',
+            self::Negotiation => 'Negotiation',
             self::Won => 'Won',
             self::Lost => 'Lost',
+        };
+    }
+
+    /** One line saying what being in this stage means — shown on the board. */
+    public function description(): string
+    {
+        return match ($this) {
+            self::New => 'Not spoken to yet.',
+            self::Contacted => 'Spoken to; no meeting yet.',
+            self::Meeting => 'Met them and understood what they need.',
+            self::Proposal => 'A proposal has gone out.',
+            self::Negotiation => 'Discussing price or terms of the proposal.',
+            self::Won => 'They said yes.',
+            self::Lost => 'They said no, or went quiet for good.',
         };
     }
 
@@ -71,20 +95,18 @@ enum PipelineStage: string implements Stage
     }
 
     /**
-     * Roughly how likely this is to land, used for the weighted pipeline figure.
-     *
-     * Deliberately coarse. These are not forecasts — they exist so that a board
-     * full of intake cards does not report the same pipeline value as a board
-     * full of proposals, which is the only comparison anybody makes.
+     * Roughly how likely a deal at this stage is to be won — used to weight the
+     * forecast. Deliberately coarse: it exists so a board full of new deals
+     * does not forecast the same as a board full of negotiations.
      */
     public function defaultProbability(): int
     {
         return match ($this) {
-            self::Intake => 5,
-            self::Cold => 10,
-            self::Warm => 30,
-            self::Qualified => 55,
-            self::Proposal => 75,
+            self::New => 5,
+            self::Contacted => 15,
+            self::Meeting => 35,
+            self::Proposal => 60,
+            self::Negotiation => 80,
             self::Won => 100,
             self::Lost => 0,
         };
@@ -97,7 +119,7 @@ enum PipelineStage: string implements Stage
      */
     public static function boardColumns(): array
     {
-        return [self::Intake, self::Cold, self::Warm, self::Qualified, self::Proposal];
+        return [self::New, self::Contacted, self::Meeting, self::Proposal, self::Negotiation];
     }
 
     /**
@@ -109,7 +131,7 @@ enum PipelineStage: string implements Stage
     }
 
     /**
-     * @return list<array{value: string, label: string, probability: int}>
+     * @return list<array{value: string, label: string, description: string, probability: int}>
      */
     public static function options(): array
     {
@@ -117,6 +139,7 @@ enum PipelineStage: string implements Stage
             static fn (self $stage): array => [
                 'value' => $stage->value,
                 'label' => $stage->label(),
+                'description' => $stage->description(),
                 'probability' => $stage->defaultProbability(),
             ],
             self::cases(),

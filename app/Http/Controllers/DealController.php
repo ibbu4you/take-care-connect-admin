@@ -8,9 +8,11 @@ use App\Models\FollowUp;
 use App\Models\Target;
 use App\Models\User;
 use App\Services\CodeGenerator;
+use App\Services\DealStageRules;
 use App\Services\StageMachine;
 use App\Support\Roles;
 use App\Support\Scope;
+use App\Support\Workflow\ActivityType;
 use App\Support\Workflow\PipelineStage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -26,6 +28,7 @@ class DealController extends Controller
     public function __construct(
         private readonly StageMachine $stages,
         private readonly CodeGenerator $codes,
+        private readonly DealStageRules $rules,
     ) {}
 
     /**
@@ -131,7 +134,17 @@ class DealController extends Controller
         $this->authorize('create', Deal::class);
 
         $validated = $request->validate([
-            'client_id' => ['required', 'integer', Rule::exists('clients', 'id')],
+            /*
+             | Checked against the clients this person can see, not just every
+             | client that exists. Otherwise opening a deal against somebody
+             | else's client id put that client's phone and email on the new
+             | deal page — a way round the client list's own scoping.
+             */
+            'client_id' => ['required', 'integer', function (string $attribute, mixed $value, \Closure $fail) use ($request) {
+                if (! Scope::apply(Client::query(), $request->user(), 'clients', ['owner_id', 'created_by'])->whereKey($value)->exists()) {
+                    $fail('Choose one of your clients.');
+                }
+            }],
             'title' => ['required', 'string', 'max:255'],
             'stage' => ['required', Rule::in(array_map(
                 fn (PipelineStage $stage) => $stage->value,
@@ -172,6 +185,8 @@ class DealController extends Controller
             'followUps.owner:id,name',
             'timeline.author:id,name',
             'stageEvents.changedBy:id,name',
+            'activities.author:id,name',
+            'proposals.creator:id,name',
         ]);
 
         return Inertia::render('Pipeline/Show', [
@@ -200,6 +215,31 @@ class DealController extends Controller
                     'at' => $note->created_at?->toIso8601String(),
                 ]),
 
+                'activities' => $deal->activities->map(fn ($activity) => [
+                    'id' => $activity->id,
+                    'type' => $activity->type->value,
+                    'type_label' => $activity->type->label(),
+                    'outcome' => $activity->outcome,
+                    'outcome_label' => $activity->outcomeLabel(),
+                    'note' => $activity->note,
+                    'author' => $activity->author?->name,
+                    'at' => $activity->happened_at?->toIso8601String(),
+                ]),
+
+                'proposals' => $deal->proposals->map(fn ($proposal) => [
+                    'id' => $proposal->id,
+                    'code' => $proposal->code,
+                    'version' => $proposal->version,
+                    'title' => $proposal->title,
+                    'status' => $proposal->status->value,
+                    'status_label' => $proposal->status->label(),
+                    'status_tone' => $proposal->status->tone(),
+                    'total' => (float) $proposal->total,
+                    'discount_percent' => (float) $proposal->discount_percent,
+                    'created_by' => $proposal->creator?->name,
+                    'updated_at' => $proposal->updated_at?->toIso8601String(),
+                ]),
+
                 'history' => $deal->stageEvents->map(fn ($event) => [
                     'id' => $event->id,
                     'from' => $event->from_stage,
@@ -212,11 +252,13 @@ class DealController extends Controller
 
             'stages' => PipelineStage::options(),
             'channels' => FollowUp::CHANNELS,
+            'activityTypes' => ActivityType::options(),
 
             'can' => [
                 'update' => $request->user()->can('update', $deal),
                 'move' => $request->user()->can('move', $deal),
                 'close' => $request->user()->can('close', $deal),
+                'propose' => $request->user()->can('proposals.create') && $request->user()->can('view', $deal),
             ],
         ]);
     }
@@ -259,6 +301,13 @@ class DealController extends Controller
 
         $target = PipelineStage::from($validated['stage']);
 
+        // A stage is a claim about what has happened; it cannot be claimed early.
+        $missing = $deal->stage === $target ? [] : $this->rules->missing($deal, $target);
+
+        if ($missing !== []) {
+            return back()->with('error', $this->rules->explain($target, $missing));
+        }
+
         DB::transaction(function () use ($request, $deal, $target, $validated) {
             $deal->forceFill([
                 'board_order' => $validated['board_order'] ?? $deal->board_order,
@@ -290,8 +339,21 @@ class DealController extends Controller
             // signed, not of what somebody hoped for six weeks ago.
             'actual_value' => ['required_if:outcome,won', 'nullable', 'numeric', 'min:0', 'max:999999999'],
             'lost_reason' => ['required_if:outcome,lost', 'nullable', 'string', 'max:160'],
-            'closed_at' => ['nullable', 'date'],
+            /*
+             | Never in the future, and only somebody who sees the whole team can
+             | date a close into an earlier month. "Won this month" is reported
+             | and paid on; letting anybody backdate a win moved revenue and
+             | incentives between months after they had been read.
+             */
+            'closed_at' => array_values(array_filter([
+                'nullable',
+                'date',
+                'before_or_equal:today',
+                $request->user()->can('deals.view.all') ? null : 'after_or_equal:'.now()->startOfMonth()->toDateString(),
+            ])),
         ], [
+            'closed_at.before_or_equal' => 'A deal cannot be closed in the future.',
+            'closed_at.after_or_equal' => 'Only a sales manager can date a close into an earlier month.',
             'actual_value.required_if' => 'Enter what was actually signed.',
             'lost_reason.required_if' => 'Say why it was lost — that is the part worth reading later.',
         ]);
@@ -395,7 +457,8 @@ class DealController extends Controller
     {
         return User::query()
             ->active()
-            ->role(Roles::RELATIONSHIP_MANAGER)
+            // Everybody who can own a deal.
+            ->role([Roles::RELATIONSHIP_MANAGER, Roles::SALES_EXECUTIVE, Roles::SALES_MANAGER])
             ->orderBy('name')
             ->get(['id', 'name'])
             ->map(fn (User $user) => ['id' => $user->id, 'name' => $user->name]);
@@ -425,6 +488,9 @@ class DealController extends Controller
             'idle_days' => $deal->idleDays(),
             'is_idle' => $deal->isIdle(),
             'last_activity_at' => $deal->last_activity_at?->toIso8601String(),
+            'next_step' => $deal->next_step,
+            'next_step_on' => $deal->next_step_on?->toDateString(),
+            'next_step_overdue' => $deal->nextStepOverdue(),
         ];
     }
 }

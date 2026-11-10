@@ -41,6 +41,8 @@ const USERS = [
     { role: 'Creative', email: 'creative@takecareconnect.com' },
     { role: 'Relationship Manager', email: 'rm@takecareconnect.com' },
     { role: 'Telecaller', email: 'telecaller@takecareconnect.com' },
+    { role: 'Sales Executive', email: 'sales@takecareconnect.com' },
+    { role: 'Sales Manager', email: 'salesmanager@takecareconnect.com' },
 ];
 
 /*
@@ -64,16 +66,16 @@ const MODULES = [
     {
         module: 'Leads',
         pages: [
-            { path: '/leads', label: 'Lead list', allow: ['Admin', 'Relationship Manager', 'Telecaller'] },
-            { path: '/leads/create', label: 'Add lead', allow: ['Admin', 'Relationship Manager', 'Telecaller'] },
-            { path: '/leads/import', label: 'Import leads', allow: ['Admin', 'Relationship Manager', 'Telecaller'] },
+            { path: '/leads', label: 'Lead list', allow: ['Admin', 'Relationship Manager', 'Telecaller', 'Sales Executive', 'Sales Manager'] },
+            { path: '/leads/create', label: 'Add lead', allow: ['Admin', 'Relationship Manager', 'Telecaller', 'Sales Executive', 'Sales Manager'] },
+            { path: '/leads/import', label: 'Import leads', allow: ['Admin', 'Relationship Manager', 'Telecaller', 'Sales Executive', 'Sales Manager'] },
         ],
     },
     {
         module: 'Clients',
         pages: [
-            { path: '/clients', label: 'Client list', allow: ['Admin', 'Relationship Manager', 'Anchor', 'Content'] },
-            { path: '/clients/create', label: 'Add client', allow: ['Admin', 'Relationship Manager'] },
+            { path: '/clients', label: 'Client list', allow: ['Admin', 'Relationship Manager', 'Anchor', 'Content', 'Sales Executive', 'Sales Manager'] },
+            { path: '/clients/create', label: 'Add client', allow: ['Admin', 'Relationship Manager', 'Sales Executive', 'Sales Manager'] },
         ],
     },
     {
@@ -86,10 +88,13 @@ const MODULES = [
     {
         module: 'Deals',
         pages: [
-            { path: '/deals', label: 'Deal list', allow: ['Admin', 'Relationship Manager'] },
-            { path: '/pipeline', label: 'Pipeline board', allow: ['Admin', 'Relationship Manager'] },
-            { path: '/targets', label: 'Targets', allow: ['Admin', 'Relationship Manager'] },
-            { path: '/follow-ups', label: 'Follow-ups', allow: ['Admin', 'Relationship Manager'] },
+            { path: '/deals', label: 'Deal list', allow: ['Admin', 'Relationship Manager', 'Sales Executive', 'Sales Manager'] },
+            { path: '/pipeline', label: 'Pipeline board', allow: ['Admin', 'Relationship Manager', 'Sales Executive', 'Sales Manager'] },
+            { path: '/targets', label: 'Targets', allow: ['Admin', 'Relationship Manager', 'Sales Executive', 'Sales Manager'] },
+            { path: '/follow-ups', label: 'Follow-ups', allow: ['Admin', 'Relationship Manager', 'Sales Executive', 'Sales Manager'] },
+            { path: '/proposals', label: 'Proposals', allow: ['Admin', 'Relationship Manager', 'Sales Executive', 'Sales Manager'] },
+            { path: '/sales/leaderboard', label: 'Leaderboard', allow: ['Admin', 'Relationship Manager', 'Sales Executive', 'Sales Manager'] },
+            { path: '/sales/team', label: 'Sales team', allow: ['Admin', 'Sales Manager'] },
         ],
     },
     {
@@ -138,8 +143,8 @@ const MODULES = [
         module: 'Reports',
         pages: [
             { path: '/reports', label: 'Reports', allow: 'all' },
-            { path: '/reports/performance', label: 'Performance', allow: ['Admin', 'Content'] },
-            { path: '/reports/impact', label: 'Impact', allow: ['Admin', 'Content'] },
+            { path: '/reports/performance', label: 'Performance', allow: ['Admin', 'Content', 'Sales Manager'] },
+            { path: '/reports/impact', label: 'Impact', allow: ['Admin', 'Content', 'Sales Manager'] },
         ],
     },
     {

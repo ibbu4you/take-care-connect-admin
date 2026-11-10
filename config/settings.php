@@ -24,6 +24,8 @@ return [
 
     'defaults' => [
         'deals.idle_days' => 14,
+        'sales.discount_approval_percent' => 10,
+        'sales.commission_percent' => 0,
         'interviews.handover_grace_days' => 3,
         'articles.turnaround_days' => 7,
         'deliverables.turnaround_days' => 5,
@@ -44,6 +46,24 @@ return [
             'help' => 'Deals with no logged activity for this long appear on the dashboard and in the morning digest.',
             'min' => 3,
             'max' => 120,
+            'group' => 'Sales',
+        ],
+        [
+            'key' => 'sales.discount_approval_percent',
+            'label' => 'A proposal needs a manager\'s approval above',
+            'unit' => '% discount',
+            'help' => 'Proposals with a bigger discount than this wait for a Sales Manager before they can be sent. 0 means every discounted proposal is checked.',
+            'min' => 0,
+            'max' => 100,
+            'group' => 'Sales',
+        ],
+        [
+            'key' => 'sales.commission_percent',
+            'label' => 'Sales incentive',
+            'unit' => '% of the value won',
+            'help' => 'Shown to each salesperson as the incentive earned on the deals they win. Leave at 0 to switch incentives off — they are then hidden everywhere.',
+            'min' => 0,
+            'max' => 50,
             'group' => 'Sales',
         ],
         [

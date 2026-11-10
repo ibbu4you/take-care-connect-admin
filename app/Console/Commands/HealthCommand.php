@@ -42,13 +42,13 @@ class HealthCommand extends Command
     private const OWNED_TABLES = [
         'activity_log', 'article_assets', 'articles', 'assignments',
         'cache', 'cache_locks', 'categories', 'clients',
-        'deals', 'deliverable_files', 'deliverables', 'failed_jobs',
-        'follow_ups', 'interview_assets', 'interviews', 'job_batches',
-        'jobs', 'leads', 'migrations', 'model_has_permissions',
-        'model_has_roles', 'notes', 'notifications', 'password_reset_tokens',
-        'permissions', 'projects', 'role_has_permissions', 'roles',
-        'sequences', 'sessions', 'settings', 'social_posts',
-        'stage_events', 'targets', 'users',
+        'deal_activities', 'deals', 'deliverable_files', 'deliverables',
+        'failed_jobs', 'follow_ups', 'interview_assets', 'interviews',
+        'job_batches', 'jobs', 'lead_calls', 'leads', 'migrations',
+        'model_has_permissions', 'model_has_roles', 'notes', 'notifications',
+        'password_reset_tokens', 'permissions', 'projects', 'proposals',
+        'role_has_permissions', 'roles', 'sequences', 'sessions', 'settings',
+        'social_posts', 'stage_events', 'targets', 'users',
     ];
 
     public function handle(): int

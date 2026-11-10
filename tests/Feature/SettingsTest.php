@@ -118,7 +118,7 @@ class SettingsTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (AssertableInertia $page) => $page
                 ->component('Settings/Index')
-                ->has('fields', 4)
+                ->has('fields', count(config('settings.fields')))
                 ->where('can.update', true));
     }
 

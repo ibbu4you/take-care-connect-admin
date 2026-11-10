@@ -10,7 +10,7 @@ import {
     type DragStartEvent,
 } from '@dnd-kit/core';
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { AlertTriangle, Building2, Handshake, Plus, Target as TargetIcon, TrendingUp } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Building2, Handshake, Plus, Target as TargetIcon, TrendingUp } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { StatCard, StatGrid } from '@/Components/data/StatCard';
 import { ViewSwitch } from '@/Components/work/ViewSwitch';
@@ -45,6 +45,9 @@ export interface DealRow {
     idle_days: number | null;
     is_idle: boolean;
     last_activity_at: string | null;
+    next_step: string | null;
+    next_step_on: string | null;
+    next_step_overdue: boolean;
 }
 
 interface Column {
@@ -392,11 +395,27 @@ function DealCard({ deal, dragging = false }: { deal: DealRow; dragging?: boolea
                 {deal.owner && <Avatar name={deal.owner.name} size="sm" />}
             </div>
 
-            {/* Only shown when it changes what somebody should do. */}
-            {deal.is_idle && (
-                <p className="mt-2 flex items-center gap-1 text-[11px] text-warning">
+            {/*
+              | The next step, so the board answers "what happens next" without
+              | opening every card. Red when it is overdue; a warning when there
+              | is none, because a live deal without one is the one that goes quiet.
+            */}
+            {deal.next_step ? (
+                <p
+                    className={cn(
+                        'mt-2 flex items-center gap-1 truncate border-t border-border pt-2 text-[11px]',
+                        deal.next_step_overdue ? 'font-medium text-destructive' : 'text-muted-foreground',
+                    )}
+                    title={deal.next_step}
+                >
+                    <ArrowRight className="size-3 shrink-0" aria-hidden="true" />
+                    <span className="truncate">{deal.next_step}</span>
+                    {deal.next_step_on && <span className="shrink-0">· {date(deal.next_step_on)}</span>}
+                </p>
+            ) : (
+                <p className="mt-2 flex items-center gap-1 border-t border-border pt-2 text-[11px] text-warning">
                     <AlertTriangle className="size-3" aria-hidden="true" />
-                    Quiet for {deal.idle_days}d
+                    {deal.is_idle ? `No next step · quiet for ${deal.idle_days}d` : 'No next step'}
                 </p>
             )}
         </div>

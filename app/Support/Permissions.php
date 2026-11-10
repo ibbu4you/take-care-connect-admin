@@ -95,6 +95,19 @@ final class Permissions
             ],
         ],
 
+        'proposals' => [
+            'label' => 'Proposals',
+            'permissions' => [
+                'proposals.view' => 'See proposals on their own deals',
+                'proposals.view.all' => 'See every proposal',
+                'proposals.create' => 'Write, edit and send a proposal',
+                // Separate, because it is the discount check: a proposal over the
+                // approval threshold cannot be sent until somebody holding this
+                // has looked at it.
+                'proposals.approve' => 'Approve a proposal with a large discount',
+            ],
+        ],
+
         'targets' => [
             'label' => 'Targets',
             'permissions' => [

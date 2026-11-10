@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Client;
+use App\Models\Deal;
 use App\Models\FollowUp;
+use App\Support\Scope;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -54,9 +57,21 @@ class FollowUpController extends Controller
     {
         abort_unless($request->user()->canAny(['deals.view', 'deals.view.all']), 403);
 
+        $user = $request->user();
+
+        // Only records this person can see — otherwise a follow-up on somebody
+        // else's client or deal puts its name on their follow-up list.
         $validated = $request->validate([
-            'client_id' => ['nullable', 'integer', Rule::exists('clients', 'id')],
-            'deal_id' => ['nullable', 'integer', Rule::exists('deals', 'id')],
+            'client_id' => ['nullable', 'integer', function (string $attribute, mixed $value, \Closure $fail) use ($user) {
+                if (! Scope::apply(Client::query(), $user, 'clients', ['owner_id', 'created_by'])->whereKey($value)->exists()) {
+                    $fail('Choose one of your clients.');
+                }
+            }],
+            'deal_id' => ['nullable', 'integer', function (string $attribute, mixed $value, \Closure $fail) use ($user) {
+                if (! Scope::apply(Deal::query(), $user, 'deals', ['owner_id'])->whereKey($value)->exists()) {
+                    $fail('Choose one of your deals.');
+                }
+            }],
             'due_on' => ['required', 'date'],
             'channel' => ['required', Rule::in(FollowUp::CHANNELS)],
             'note' => ['nullable', 'string', 'max:500'],

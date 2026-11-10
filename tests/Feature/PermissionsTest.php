@@ -163,6 +163,17 @@ class PermissionsTest extends TestCase
                 'social.links.view.all',
             ],
             Roles::TELECALLER => [],
+            Roles::SALES_EXECUTIVE => [],
+            Roles::SALES_MANAGER => [
+                // The one non-admin role that sees across the team, because
+                // running the team is the job.
+                'leads.view.all',
+                'clients.view.all',
+                'deals.view.all',
+                'proposals.view.all',
+                'targets.view.all',
+                'reports.view.all',
+            ],
             Roles::CONTENT => [
                 'articles.view.all',
                 'interviews.view.all',
@@ -191,7 +202,7 @@ class PermissionsTest extends TestCase
     {
         $this->seedRoles();
 
-        foreach ([Roles::ANCHOR, Roles::CONTENT, Roles::CREATIVE, Roles::RELATIONSHIP_MANAGER, Roles::TELECALLER] as $role) {
+        foreach ([Roles::ANCHOR, Roles::CONTENT, Roles::CREATIVE, Roles::RELATIONSHIP_MANAGER, Roles::TELECALLER, Roles::SALES_EXECUTIVE, Roles::SALES_MANAGER] as $role) {
             $user = User::factory()->create();
             $user->assignRole($role);
             app(PermissionRegistrar::class)->forgetCachedPermissions();

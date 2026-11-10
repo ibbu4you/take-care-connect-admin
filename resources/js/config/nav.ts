@@ -4,6 +4,7 @@ import {
     Building2,
     CalendarDays,
     Clapperboard,
+    FileSignature,
     FileText,
     FolderKanban,
     Handshake,
@@ -18,7 +19,9 @@ import {
     Target,
     UserSearch,
     TrendingUp,
+    Trophy,
     UserCog,
+    Users,
     type LucideIcon,
 } from 'lucide-react';
 
@@ -125,11 +128,36 @@ export const NAV: NavItem[] = [
         permissions: ['deals.view', 'deals.view.all'],
     },
     {
+        // What the buyer is offered. Written from a deal; this is the list of
+        // all of them, and a Sales Manager's approval queue.
+        label: 'Proposals',
+        href: '/proposals',
+        icon: FileSignature,
+        section: 'Sales',
+        permissions: ['proposals.view', 'proposals.view.all'],
+    },
+    {
         label: 'Targets',
         href: '/targets',
         icon: Target,
         section: 'Sales',
         permissions: ['targets.view', 'targets.view.all', 'targets.manage'],
+    },
+    {
+        label: 'Leaderboard',
+        href: '/sales/leaderboard',
+        icon: Trophy,
+        section: 'Sales',
+        permissions: ['deals.view', 'deals.view.all'],
+    },
+    {
+        // The manager's page: the whole team's pipeline, stuck deals, and
+        // handing new leads out by city.
+        label: 'Sales team',
+        href: '/sales/team',
+        icon: Users,
+        section: 'Sales',
+        permissions: ['deals.view.all'],
     },
     {
         // Gated on deals rather than clients: chasing a follow-up is pipeline

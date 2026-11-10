@@ -118,12 +118,20 @@ class ImpactController extends Controller
      */
     private function featured(Carbon $from, Carbon $to): Collection
     {
-        return Interview::with(['client:id,name,city,trade'])
+        $interviews = Interview::with(['client:id,name,city,trade'])
             ->whereBetween('conducted_at', [$from, $to])
             ->orderBy('conducted_at')
+            ->get();
+
+        // Loaded once and looked up, rather than one query per interview.
+        $articles = Article::with('category:id,name')
+            ->whereIn('interview_id', $interviews->pluck('id'))
             ->get()
-            ->map(function (Interview $interview) {
-                $article = Article::with('category:id,name')->where('interview_id', $interview->id)->first();
+            ->keyBy('interview_id');
+
+        return $interviews
+            ->map(function (Interview $interview) use ($articles) {
+                $article = $articles->get($interview->id);
 
                 return [
                     'date' => $interview->conducted_at?->toDateString(),

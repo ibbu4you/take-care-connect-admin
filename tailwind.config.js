@@ -111,11 +111,11 @@ export default {
                  */
                 stage: {
                     /* Sales pipeline — one ramp cooling toward the brand navy. */
-                    intake: 'hsl(var(--stage-intake))',
-                    cold: 'hsl(var(--stage-cold))',
-                    warm: 'hsl(var(--stage-warm))',
-                    qualified: 'hsl(var(--stage-qualified))',
+                    new: 'hsl(var(--stage-new))',
+                    contacted: 'hsl(var(--stage-contacted))',
+                    meeting: 'hsl(var(--stage-meeting))',
                     proposal: 'hsl(var(--stage-proposal))',
+                    negotiation: 'hsl(var(--stage-negotiation))',
                     won: 'hsl(var(--stage-won))',
                     lost: 'hsl(var(--stage-lost))',
                     /* Interview + article workflow — a separate hue family. */

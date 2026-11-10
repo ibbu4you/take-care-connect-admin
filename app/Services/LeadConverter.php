@@ -97,7 +97,9 @@ class LeadConverter
                     'code' => $this->codes->next('DEA'),
                     'client_id' => $client->getKey(),
                     'title' => $deal['title'],
-                    'stage' => PipelineStage::Intake,
+                    // They have just agreed to become a client, so they have certainly
+                    // been spoken to.
+                    'stage' => PipelineStage::Contacted,
                     'stage_entered_at' => now(),
                     'owner_id' => $client->owner_id,
                     'source' => $lead->source->value,

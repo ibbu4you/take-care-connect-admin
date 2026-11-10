@@ -61,6 +61,8 @@ class Deal extends Model
         'lost_reason',
         'board_order',
         'last_activity_at',
+        'next_step',
+        'next_step_on',
         'notes',
     ];
 
@@ -72,6 +74,7 @@ class Deal extends Model
             'expected_close_on' => 'date:Y-m-d',
             'closed_at' => 'datetime',
             'last_activity_at' => 'datetime',
+            'next_step_on' => 'date:Y-m-d',
             'expected_value' => 'decimal:2',
             'actual_value' => 'decimal:2',
             'probability' => 'integer',
@@ -165,6 +168,32 @@ class Deal extends Model
     }
 
     /** @return MorphMany<StageEvent, $this> */
+    /**
+     * Calls, meetings, visits, WhatsApps and emails, newest first.
+     *
+     * @return HasMany<DealActivity, $this>
+     */
+    public function activities(): HasMany
+    {
+        return $this->hasMany(DealActivity::class)->latest('happened_at');
+    }
+
+    /**
+     * Every proposal sent or drafted for this deal, newest version first.
+     *
+     * @return HasMany<Proposal, $this>
+     */
+    public function proposals(): HasMany
+    {
+        return $this->hasMany(Proposal::class)->orderByDesc('version');
+    }
+
+    /** The next step is past its date and the deal is still open. */
+    public function nextStepOverdue(): bool
+    {
+        return ! $this->stage->isClosed() && $this->next_step_on !== null && $this->next_step_on->isBefore(today());
+    }
+
     public function stageEvents(): MorphMany
     {
         return $this->morphMany(StageEvent::class, 'subject')->latest('changed_at');

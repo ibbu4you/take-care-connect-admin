@@ -77,7 +77,8 @@ class LeadImportController extends Controller
         $validated = $request->validate([
             'file' => ['required', 'file', 'mimes:csv,txt', 'max:2048'],
             'source' => ['required', Rule::enum(LeadSource::class)],
-            'owner_id' => ['nullable', 'integer', Rule::exists('users', 'id')],
+            // Only somebody who works leads, not any account that exists.
+            'owner_id' => ['nullable', 'integer', Rule::in(array_column($this->ownerOptions(), 'id'))],
         ]);
 
         // Only somebody who may move leads between people may import them into
@@ -297,7 +298,7 @@ class LeadImportController extends Controller
     {
         return User::query()
             ->active()
-            ->role([Roles::RELATIONSHIP_MANAGER, Roles::TELECALLER])
+            ->role([Roles::RELATIONSHIP_MANAGER, Roles::TELECALLER, Roles::SALES_EXECUTIVE, Roles::SALES_MANAGER])
             ->orderBy('name')
             ->get(['id', 'name'])
             ->map(fn (User $user) => ['id' => $user->id, 'name' => $user->name])

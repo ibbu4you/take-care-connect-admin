@@ -82,11 +82,13 @@ async function run() {
 
     await step('Relationship Manager', 'Leads', 'Log a call', async () => {
         await rm.goto(leadUrl, { waitUntil: 'networkidle0' });
-        await type(rm, '#body', 'Called. Wants a quote before Diwali.');
-        await clickText(rm, 'Log it');
+        // A call is an outcome first, a note second — the way the form asks.
+        await clickText(rm, 'Interested');
+        await type(rm, '#call_note', 'Called. Wants a quote before Diwali.');
+        await clickText(rm, 'Log call');
         await settle(rm);
 
-        return expectText(rm, 'Wants a quote before Diwali', 'the call appears in the contact log');
+        return expectText(rm, 'Wants a quote before Diwali', 'the call appears in the history');
     });
 
     await step('Relationship Manager', 'Leads', 'Convert to client', async () => {
@@ -220,6 +222,125 @@ async function run() {
         return expectMounted(creative, 'the deliverable page rendered');
     });
 
+    // ── Sales Executive: a lead becomes a deal, a meeting, a proposal ──────
+    const sales = await session('sales@takecareconnect.com');
+    const dealTitle = `Sales package ${stamp}`;
+    let dealUrl = null;
+    let proposalUrl = null;
+
+    await step('Sales Executive', 'Leads', 'Add a lead and convert it with a deal', async () => {
+        await sales.goto(`${base}/leads/create`, { waitUntil: 'networkidle0' });
+        await type(sales, '#name', `Audit Jasmine Co ${stamp}`);
+        await type(sales, '#contact_person', 'Selvi Murugan');
+        await type(sales, '#phone', '+91 90000 00002');
+        await type(sales, '#city', 'Madurai');
+        await submit(sales);
+        await expectUrl(sales, /\/leads\/\d+$/, 'landed on the new lead');
+
+        await clickText(sales, 'Convert to client');
+        await sales.waitForSelector('#deal_title', { timeout: 5000 });
+        await type(sales, '#deal_title', dealTitle);
+        const before = sales.url();
+        await clickText(sales, 'Convert');
+        await urlChanged(sales, before);
+
+        await sales.goto(`${base}/deals?search=${encodeURIComponent(dealTitle)}`, { waitUntil: 'networkidle0' });
+        dealUrl = await sales.evaluate((title) => {
+            const link = [...document.querySelectorAll('a[href*="/deals/"]')].find((a) => a.textContent?.includes(title));
+            return link ? link.href : null;
+        }, dealTitle);
+
+        return dealUrl ? { pass: true } : { pass: false, note: 'the converted deal is not in their list' };
+    });
+
+    await step('Sales Executive', 'Deals', 'A meeting is refused as a drag, earned by logging it', async () => {
+        if (!dealUrl) return { pass: false, note: 'no deal from the previous step' };
+
+        await sales.goto(dealUrl, { waitUntil: 'networkidle0' });
+        await clickText(sales, 'Meeting');
+        await clickText(sales, 'Held');
+        await type(sales, '#activity_note', 'Met the owner. Wants three stories.');
+        await type(sales, '#next_step', 'Send the proposal');
+        await clickText(sales, 'Log meeting');
+        await settle(sales);
+
+        const stage = await expectText(sales, 'Meeting held', 'the deal moved to Meeting held');
+        if (!stage.pass) return stage;
+
+        return expectText(sales, 'Send the proposal', 'the next step is shown');
+    });
+
+    await step('Sales Executive', 'Proposals', 'Write a proposal', async () => {
+        if (!dealUrl) return { pass: false, note: 'no deal' };
+
+        await sales.goto(dealUrl, { waitUntil: 'networkidle0' });
+        const before = sales.url();
+        await clickText(sales, 'Write a proposal');
+        await urlChanged(sales, before);
+        await type(sales, 'input[aria-label="Line 1 description"]', 'Three business stories with reels');
+        await setValue(sales, 'input[aria-label="Line 1 rate"]', '25000');
+        const form = sales.url();
+        await clickText(sales, 'Save draft');
+        await urlChanged(sales, form);
+
+        const landed = await expectUrl(sales, /\/proposals\/\d+$/, 'landed on the proposal');
+        proposalUrl = sales.url();
+
+        return landed;
+    });
+
+    await step('Sales Executive', 'Proposals', 'Submit and send it', async () => {
+        if (!proposalUrl) return { pass: false, note: 'no proposal' };
+
+        await sales.goto(proposalUrl, { waitUntil: 'networkidle0' });
+        await clickText(sales, 'Submit');
+        await settle(sales);
+        const ready = await expectText(sales, 'Ready to send', 'within the limit, it is ready to send');
+        if (!ready.pass) return ready;
+
+        // Not the WhatsApp button: that opens a window a headless browser keeps.
+        await clickText(sales, 'I sent it another way');
+        await settle(sales);
+
+        return expectText(sales, 'A follow-up call is on your list', 'marked sent, follow-up set');
+    });
+
+    await step('Sales Executive', 'Proposals', 'The client opens it without an account', async () => {
+        if (!proposalUrl) return { pass: false, note: 'no proposal' };
+
+        await sales.goto(proposalUrl, { waitUntil: 'networkidle0' });
+        const link = await sales.evaluate(() => document.querySelector('a[href*="/p/"]')?.href ?? null);
+        if (!link) return { pass: false, note: 'no client link on the proposal' };
+
+        const outsider = await (await browser.createBrowserContext()).newPage();
+        await outsider.goto(link, { waitUntil: 'networkidle0' });
+
+        return expectText(outsider, 'Three business stories with reels', 'the signed page shows the proposal');
+    });
+
+    await step('Sales Executive', 'Deals', 'Sending moved the deal to Proposal sent', async () => {
+        if (!dealUrl) return { pass: false, note: 'no deal' };
+
+        await sales.goto(dealUrl, { waitUntil: 'networkidle0' });
+
+        return expectText(sales, 'Proposal sent', 'the stage followed the proposal');
+    });
+
+    // ── Sales Manager: the team ────────────────────────────────────────────
+    const salesManager = await session('salesmanager@takecareconnect.com');
+
+    await step('Sales Manager', 'Sales', 'The team view opens', async () => {
+        await salesManager.goto(`${base}/sales/team`, { waitUntil: 'networkidle0' });
+
+        return expectText(salesManager, 'Who is carrying what', 'the team table rendered');
+    });
+
+    await step('Sales Manager', 'Sales', 'The leaderboard lists the team', async () => {
+        await salesManager.goto(`${base}/sales/leaderboard`, { waitUntil: 'networkidle0' });
+
+        return expectText(salesManager, 'Vikram Shetty', 'the sales executive is ranked');
+    });
+
     // ── Admin: the administration surface ──────────────────────────────────
     const admin = await session('admin@takecareconnect.com');
 
@@ -234,7 +355,14 @@ async function run() {
          | through the prototype setter and fires the events React needs, so the
          | form still knows it is dirty and Save still enables.
          */
-        await setValue(admin, '[id="deals.idle_days"]', '21');
+        /*
+         | A value different from the current one, whatever that is. Always
+         | writing 21 made a second run fail: the field already read 21, the
+         | form was not dirty, and Save stayed — correctly — disabled.
+         */
+        const current = await admin.$eval('#deals\\.idle_days', (input) => input.value);
+        const target = current === '21' ? '22' : '21';
+        await setValue(admin, '[id="deals.idle_days"]', target);
 
         /*
          | Wait for the PATCH itself.
@@ -256,9 +384,9 @@ async function run() {
 
         const value = await admin.$eval('#deals\\.idle_days', (input) => input.value);
 
-        return value === '21'
-            ? { pass: true, note: 'saved and read back as 21 days' }
-            : { pass: false, note: `expected 21, read back ${value}` };
+        return value === target
+            ? { pass: true, note: `saved and read back as ${target} days` }
+            : { pass: false, note: `expected ${target}, read back ${value}` };
     });
 
     await step('Admin', 'Reports', 'Performance opens with every discipline', async () => {

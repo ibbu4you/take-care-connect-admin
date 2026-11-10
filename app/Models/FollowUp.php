@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class FollowUp extends Model
 {
-    public const CHANNELS = ['call', 'whatsapp', 'email', 'visit'];
+    public const CHANNELS = ['call', 'meeting', 'visit', 'whatsapp', 'email'];
 
     protected $fillable = [
         'client_id', 'lead_id', 'deal_id', 'user_id', 'due_on',

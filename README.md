@@ -21,7 +21,7 @@ carries on exactly as it does today.
 That separation is deliberate: it means nothing here can break the live site,
 and no version of any package has to be kept in lockstep with it.
 
-## The six working roles
+## The eight working roles
 
 | Role | Owns |
 |---|---|
@@ -31,6 +31,8 @@ and no version of any package has to be kept in lockstep with it.
 | **Creative** | Posters, reels and video edits, and where they were published. |
 | **Relationship Manager** | Clients, projects, the sales pipeline, booking interviews. |
 | **Telecaller** | Their own leads: adding, calling, logging each call, booking interviews. |
+| **Sales Executive** | Their own leads and deals: calls, meetings, proposals, closing. |
+| **Sales Manager** | The whole sales team: every deal, discount approvals, targets, handing out leads. |
 
 ## The SOP this models
 
@@ -106,6 +108,8 @@ fictional clients.
 | `creative@takecareconnect.com` | Creative |
 | `rm@takecareconnect.com` | Relationship Manager |
 | `telecaller@takecareconnect.com` | Telecaller |
+| `sales@takecareconnect.com` | Sales Executive |
+| `salesmanager@takecareconnect.com` | Sales Manager |
 
 It refuses to run in production, and `php artisan tcc:health` fails if it finds
 those accounts on a production box. The first real account is made with
@@ -152,7 +156,7 @@ Three files, and nothing else needs to be consulted:
 - **`app/Support/Permissions.php`** — the `module.action` catalogue. One list
   drives the seeder, the `permission:` middleware on every route, and the
   checkbox matrix on the user form.
-- **`app/Support/Roles.php`** — what each of the six roles grants.
+- **`app/Support/Roles.php`** — what each of the eight roles grants.
 - **`app/Support/Scope.php`** — row-level scoping.
 
 The `.all` suffix is scope, not a separate capability: `interviews.view` means
@@ -470,7 +474,7 @@ node scripts/audit.mjs     --base=http://127.0.0.1:8391   # access matrix
 node scripts/workflow.mjs  --base=http://127.0.0.1:8391   # the SOP, end to end
 ```
 
-`audit.mjs` signs in as all six roles and opens every module page, comparing
+`audit.mjs` signs in as all eight roles and opens every module page, comparing
 what happens against what that role is *supposed* to reach. The expectations are
 written from each role's job rather than copied from the permission seeder —
 copying it would only prove the seeder agrees with itself.

@@ -21,6 +21,8 @@ interface Row {
     deals_actual: number;
     interviews_actual: number;
     attainment: number | null;
+    /** Null when incentives are switched off in Settings. */
+    incentive: number | null;
     note: string | null;
 }
 
@@ -30,10 +32,11 @@ interface IndexProps {
     periods: Array<{ value: string; label: string }>;
     rows: Row[];
     totals: { revenue_target: number; revenue_actual: number };
+    commission: number;
     can: { manage: boolean };
 }
 
-export default function TargetsIndex({ period, periodLabel, periods, rows, totals, can }: IndexProps) {
+export default function TargetsIndex({ period, periodLabel, periods, rows, totals, commission, can }: IndexProps) {
     const [editing, setEditing] = useState<Row | null>(null);
 
     const teamAttainment =
@@ -102,6 +105,7 @@ export default function TargetsIndex({ period, periodLabel, periods, rows, total
                                     <TH>Attainment</TH>
                                     <TH>Deals</TH>
                                     <TH>Interviews booked</TH>
+                                    {commission > 0 && <TH className="text-right">Incentive ({commission}%)</TH>}
                                     {can.manage && <TH />}
                                 </TR>
                             </THead>
@@ -174,6 +178,14 @@ export default function TargetsIndex({ period, periodLabel, periods, rows, total
                                                 )}
                                             </span>
                                         </TD>
+
+                                        {commission > 0 && (
+                                            <TD className="text-right">
+                                                <span className="text-sm font-medium tabular text-success">
+                                                    {moneyCompact(row.incentive ?? 0)}
+                                                </span>
+                                            </TD>
+                                        )}
 
                                         {can.manage && (
                                             <TD>

@@ -10,14 +10,17 @@ use App\Models\Interview;
 use App\Models\Lead;
 use App\Models\LeadCall;
 use App\Models\Note;
+use App\Models\Proposal;
 use App\Models\StageEvent;
 use App\Models\Target;
 use App\Models\User;
 use App\Support\Scope;
+use App\Support\Settings;
 use App\Support\Workflow\ArticleStage;
 use App\Support\Workflow\DeliverableStage;
 use App\Support\Workflow\InterviewStage;
 use App\Support\Workflow\PipelineStage;
+use App\Support\Workflow\ProposalStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -77,6 +80,7 @@ class DashboardController extends Controller
             'activity' => $this->activity($user),
             'todos' => $this->todos($user, $panels),
             'agenda' => $this->agenda($user, $panels),
+            'proposals' => $this->proposals($user),
         ]);
     }
 
@@ -229,12 +233,17 @@ class DashboardController extends Controller
         $target = Target::where('user_id', $user->id)->where('period', Target::currentPeriod())->first();
         $month = [now()->startOfMonth(), now()->endOfMonth()];
 
+        $commission = Settings::int('sales.commission_percent');
+
         if ($panels['sales'] && (float) ($target?->revenue_target ?? 0) > 0) {
+            // The salesperson's own wins: the incentive is theirs, not the team's.
+            $done = (float) Deal::where('owner_id', $user->id)->won()->whereBetween('closed_at', $month)->sum('actual_value');
+
             return [
                 'kind' => 'revenue',
-                'done' => (float) $this->scope(Deal::query(), $user, 'deals', ['owner_id'])
-                    ->won()->whereBetween('closed_at', $month)->sum('actual_value'),
+                'done' => $done,
                 'total' => (float) $target->revenue_target,
+                'incentive' => $commission > 0 ? round($done * $commission / 100, 2) : null,
             ];
         }
 
@@ -247,7 +256,14 @@ class DashboardController extends Controller
         }
 
         if ($panels['sales']) {
-            return ['kind' => 'revenue', 'done' => 0, 'total' => null];
+            $done = (float) Deal::where('owner_id', $user->id)->won()->whereBetween('closed_at', $month)->sum('actual_value');
+
+            return [
+                'kind' => 'revenue',
+                'done' => $done,
+                'total' => null,
+                'incentive' => $commission > 0 ? round($done * $commission / 100, 2) : null,
+            ];
         }
 
         if ($panels['content']) {
@@ -365,6 +381,29 @@ class DashboardController extends Controller
     private function gauge(User $user, array $panels): ?array
     {
         $month = [now()->startOfMonth(), now()->endOfMonth()];
+
+        // Somebody who sells but does not book interviews: deals won against
+        // their deals target, and the next three things to do on open deals.
+        if ($panels['sales'] && ! $panels['interviews']) {
+            $deals = fn () => $this->scope(Deal::query(), $user, 'deals', ['owner_id']);
+            $won = Deal::where('owner_id', $user->id)->won()->whereBetween('closed_at', $month)->count();
+            $target = (int) (Target::where('user_id', $user->id)->where('period', Target::currentPeriod())->value('deals_target') ?? 0);
+
+            return [
+                'kind' => 'deals',
+                'value' => $won,
+                'max' => max($won, $target),
+                'items' => $deals()->open()->whereNotNull('next_step_on')->orderBy('next_step_on')->limit(3)->get()
+                    ->map(fn (Deal $deal) => [
+                        'id' => $deal->id,
+                        'date' => $deal->next_step_on->format('M j, Y'),
+                        'meta' => $deal->next_step ?? $deal->title,
+                        'status' => $deal->stage->label(),
+                        'tone' => $deal->nextStepOverdue() ? 'danger' : 'info',
+                        'url' => "/deals/{$deal->id}",
+                    ])->all(),
+            ];
+        }
 
         if ($panels['interviews']) {
             $interviews = fn () => $this->scope(Interview::query(), $user, 'interviews', self::INTERVIEW_COLUMNS);
@@ -701,6 +740,48 @@ class DashboardController extends Controller
     private function callList(User $user): Builder
     {
         return Lead::visibleTo($user)->open()->whereNotNull('next_action_on')->orderBy('next_action_on');
+    }
+
+    /**
+     * Proposals waiting on this person: to approve, to send, or to fix.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function proposals(User $user): ?array
+    {
+        if (! $user->canAny(['proposals.view', 'proposals.view.all'])) {
+            return null;
+        }
+
+        $mine = fn () => Proposal::whereIn('deal_id', $this->scope(Deal::query(), $user, 'deals', ['owner_id'])->select('id'));
+
+        $toApprove = $user->can('proposals.approve')
+            // Never one this person wrote, changed or submitted: they may not approve those.
+            ? Proposal::where('status', ProposalStatus::PendingApproval->value)
+                ->where('created_by', '!=', $user->id)
+                ->where(fn ($q) => $q->whereNull('last_edited_by')->orWhere('last_edited_by', '!=', $user->id))
+                ->where(fn ($q) => $q->whereNull('submitted_by')->orWhere('submitted_by', '!=', $user->id))
+            : null;
+
+        $items = collect()
+            ->concat($toApprove ? (clone $toApprove)->with('deal:id,title')->latest()->limit(3)->get()->map(fn (Proposal $p) => [$p, 'Approve']) : [])
+            ->concat($mine()->whereIn('status', [ProposalStatus::Approved->value, ProposalStatus::Rejected->value])->with('deal:id,title')->latest()->limit(3)->get()
+                ->map(fn (Proposal $p) => [$p, $p->status === ProposalStatus::Approved ? 'Send' : 'Fix']))
+            ->take(4)
+            ->map(fn (array $pair) => [
+                'id' => $pair[0]->id,
+                'title' => $pair[0]->title,
+                'deal' => $pair[0]->deal?->title,
+                'total' => (float) $pair[0]->total,
+                'action' => $pair[1],
+            ])->values()->all();
+
+        return [
+            'to_approve' => $toApprove ? (clone $toApprove)->count() : null,
+            'ready' => $mine()->where('status', ProposalStatus::Approved->value)->count(),
+            'sent' => $mine()->where('status', ProposalStatus::Sent->value)->count(),
+            'items' => $items,
+        ];
     }
 
     /** "8:00 – 8:45 AM", or "11:30 AM – 12:15 PM" across noon. */

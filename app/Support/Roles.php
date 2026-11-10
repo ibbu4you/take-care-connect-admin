@@ -3,7 +3,7 @@
 namespace App\Support;
 
 /**
- * The six roles, and what each one grants by default.
+ * The eight roles, and what each one grants by default.
  *
  * These are starting points, not a cage. Roles are editable at runtime on the
  * Roles page, and any individual can be given extra permissions or have one
@@ -45,6 +45,10 @@ final class Roles
 
     public const TELECALLER = 'Telecaller';
 
+    public const SALES_EXECUTIVE = 'Sales Executive';
+
+    public const SALES_MANAGER = 'Sales Manager';
+
     /** @return list<string> */
     public static function names(): array
     {
@@ -55,6 +59,8 @@ final class Roles
             self::CREATIVE,
             self::RELATIONSHIP_MANAGER,
             self::TELECALLER,
+            self::SALES_EXECUTIVE,
+            self::SALES_MANAGER,
         ];
     }
 
@@ -72,6 +78,8 @@ final class Roles
             self::CREATIVE => 'Produces posters, reels and video edits, and records where they were published.',
             self::RELATIONSHIP_MANAGER => 'Owns clients and projects, works the sales pipeline and books interviews.',
             self::TELECALLER => 'Works the call list: adds and calls leads, logs each call and books interviews.',
+            self::SALES_EXECUTIVE => 'Sells: works their own leads and deals, logs every call and meeting, and writes proposals.',
+            self::SALES_MANAGER => 'Runs the sales team: sees every deal, approves discounts, sets targets and hands out leads.',
         ];
     }
 
@@ -89,6 +97,8 @@ final class Roles
             self::CREATIVE => self::creative(),
             self::RELATIONSHIP_MANAGER => self::relationshipManager(),
             self::TELECALLER => self::telecaller(),
+            self::SALES_EXECUTIVE => self::salesExecutive(),
+            self::SALES_MANAGER => self::salesManager(),
         ];
     }
 
@@ -222,6 +232,7 @@ final class Roles
             ...Permissions::only('deals', [
                 'view', 'create', 'update', 'move', 'close',
             ]),
+            ...Permissions::only('proposals', ['view', 'create']),
             ...Permissions::only('targets', ['view']),
             ...Permissions::only('interviews', [
                 'view', 'create', 'schedule', 'cancel',
@@ -257,6 +268,54 @@ final class Roles
             ...Permissions::only('comments', ['create']),
             // Their own figures, like every other role.
             ...Permissions::only('reports', ['view']),
+        ];
+    }
+
+    /**
+     * A salesperson: their own leads, clients and deals, start to finish.
+     *
+     * Own work only — no `.all` — so their pipeline, follow-ups and dashboard
+     * are about them. They can convert a lead and close a deal, because both
+     * are the moment the sale happens and the person who made it is the one
+     * standing there. A large discount still goes past a Sales Manager first:
+     * `proposals.approve` is not theirs.
+     *
+     * @return list<string>
+     */
+    private static function salesExecutive(): array
+    {
+        return [
+            ...Permissions::only('leads', ['view', 'create', 'update', 'import', 'convert']),
+            ...Permissions::only('clients', ['view', 'create', 'update']),
+            ...Permissions::only('deals', ['view', 'create', 'update', 'move', 'close']),
+            ...Permissions::only('proposals', ['view', 'create']),
+            ...Permissions::only('targets', ['view']),
+            ...Permissions::only('comments', ['create']),
+            ...Permissions::only('reports', ['view']),
+        ];
+    }
+
+    /**
+     * The head of sales.
+     *
+     * The one non-admin role that sees across the team, because that is the
+     * job: every deal and lead (`.all`), moving leads between people, setting
+     * targets, and approving discounts. `reports.view.all` opens Performance
+     * and the sales team view. No accounts, roles or settings — those stay
+     * with the Admin.
+     *
+     * @return list<string>
+     */
+    private static function salesManager(): array
+    {
+        return [
+            ...Permissions::only('leads', ['view', 'view.all', 'create', 'update', 'import', 'convert', 'assign', 'export']),
+            ...Permissions::only('clients', ['view', 'view.all', 'create', 'update', 'assign', 'export']),
+            ...Permissions::only('deals', ['view', 'view.all', 'create', 'update', 'move', 'close']),
+            ...Permissions::only('proposals', ['view', 'view.all', 'create', 'approve']),
+            ...Permissions::only('targets', ['view', 'view.all', 'manage']),
+            ...Permissions::only('comments', ['create']),
+            ...Permissions::only('reports', ['view', 'view.all']),
         ];
     }
 }

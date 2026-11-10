@@ -58,7 +58,13 @@ interface DashboardProps {
     greeting: string;
     panels: Record<'sales' | 'leads' | 'interviews' | 'content' | 'creative' | 'organisation', boolean>;
     attention: AttentionItem[];
-    progress: { kind: 'revenue' | 'interviews' | 'articles' | 'deliverables'; done: number; total: number | null } | null;
+    progress: {
+        kind: 'revenue' | 'interviews' | 'articles' | 'deliverables';
+        done: number;
+        total: number | null;
+        /** Revenue only, and only when incentives are switched on. */
+        incentive?: number | null;
+    } | null;
     breakdown: {
         kind: ModuleKind;
         total: number;
@@ -67,7 +73,7 @@ interface DashboardProps {
         people_count: number;
     } | null;
     gauge: {
-        kind: Exclude<ModuleKind, 'deals'>;
+        kind: ModuleKind;
         value: number;
         max: number;
         items: Array<{ id: number; date: string; meta: string; status: string; tone: Tone; url: string }>;
@@ -88,6 +94,12 @@ interface DashboardProps {
         }>;
     };
     agenda: Partial<Record<AgendaTab, AgendaItem[]>>;
+    proposals: {
+        to_approve: number | null;
+        ready: number;
+        sent: number;
+        items: Array<{ id: number; title: string; deal: string | null; total: number; action: 'Approve' | 'Send' | 'Fix' }>;
+    } | null;
 }
 
 type AgendaTab = 'interviews' | 'calls' | 'deadlines';
@@ -102,7 +114,7 @@ interface AgendaItem {
     url: string;
 }
 
-export default function Dashboard({ greeting, panels, attention, progress, breakdown, gauge, activity, todos, agenda }: DashboardProps) {
+export default function Dashboard({ greeting, panels, attention, progress, breakdown, gauge, activity, todos, agenda, proposals }: DashboardProps) {
     const { user, can } = usePermissions();
     const hasAnyPanel = Object.values(panels).some(Boolean);
 
@@ -158,6 +170,7 @@ export default function Dashboard({ greeting, panels, attention, progress, break
 
                     <div className="flex min-w-0 flex-col gap-6">
                         {gauge && <GaugeCard gauge={gauge} />}
+                        {proposals && <ProposalsCard proposals={proposals} />}
                         <ActivityCard activity={activity} canOpenReports={can(['reports.view', 'reports.view.all'])} />
                     </div>
 
@@ -186,6 +199,8 @@ function ProgressCard({ progress }: { progress: NonNullable<DashboardProps['prog
     const { can } = usePermissions();
     const percent = progress.total ? (progress.done / progress.total) * 100 : 0;
     const month = monthName();
+    const incentiveText =
+        progress.incentive !== undefined && progress.incentive !== null ? ` Incentive so far: ${moneyCompact(progress.incentive)}.` : '';
 
     const copy = {
         revenue: {
@@ -193,8 +208,8 @@ function ProgressCard({ progress }: { progress: NonNullable<DashboardProps['prog
             heading: 'Won this month',
             text:
                 progress.total !== null
-                    ? `${moneyCompact(progress.done)} won of a ${moneyCompact(progress.total)} target for ${month}.`
-                    : `No revenue target is set for ${month} yet.`,
+                    ? `${moneyCompact(progress.done)} won of a ${moneyCompact(progress.total)} target for ${month}.${incentiveText}`
+                    : `No revenue target is set for ${month} yet.${incentiveText}`,
             link: can(['targets.view', 'targets.view.all', 'targets.manage'])
                 ? { label: progress.total !== null ? 'Open targets' : 'Set a target', href: '/targets' }
                 : null,
@@ -390,7 +405,16 @@ interface GaugeCopy {
     cta: { label: string; href: string; permission: string };
 }
 
-const GAUGE_COPY: Record<Exclude<ModuleKind, 'deals'>, GaugeCopy> = {
+const GAUGE_COPY: Record<ModuleKind, GaugeCopy> = {
+    deals: {
+        title: 'Deals won',
+        icon: Handshake,
+        href: '/pipeline',
+        done: 'won',
+        total: 'target',
+        empty: 'No next steps yet. Log what happened on a deal and say what happens next.',
+        cta: { label: 'Open the pipeline', href: '/pipeline', permission: 'deals.view' },
+    },
     interviews: {
         title: 'Interviews',
         icon: Mic,
@@ -729,7 +753,7 @@ function TodoCard({ todos }: { todos: DashboardProps['todos'] }) {
 
 const TAB_COPY: Record<AgendaTab, { label: string; icon: LucideIcon; empty: string }> = {
     interviews: { label: 'Interviews', icon: Mic, empty: 'No interviews booked from today on.' },
-    calls: { label: 'Calls', icon: PhoneCall, empty: 'No calls due from today on.' },
+    calls: { label: 'Next steps', icon: PhoneCall, empty: 'Nothing due from today on.' },
     deadlines: { label: 'Deadlines', icon: PartyPopper, empty: 'Nothing due from today on.' },
 };
 
@@ -835,6 +859,52 @@ function AgendaPanel({ agenda }: { agenda: DashboardProps['agenda'] }) {
                 </ul>
             )}
         </section>
+    );
+}
+
+/* ─── Proposals ─────────────────────────────────────────────────────────── */
+
+const ACTION_TONE: Record<'Approve' | 'Send' | 'Fix', Tone> = { Approve: 'warning', Send: 'info', Fix: 'danger' };
+
+/** What is waiting on this person: proposals to approve, to send, or to fix. */
+function ProposalsCard({ proposals }: { proposals: NonNullable<DashboardProps['proposals']> }) {
+    const figures = [
+        ...(proposals.to_approve !== null ? [{ label: 'To approve', value: proposals.to_approve }] : []),
+        { label: 'Ready to send', value: proposals.ready },
+        { label: 'Awaiting answer', value: proposals.sent },
+    ];
+
+    return (
+        <DashCard icon={FileText} title="Proposals" action={{ label: 'See All', href: '/proposals' }}>
+            <div className={cn('grid gap-px overflow-hidden rounded-lg border border-border bg-border', figures.length === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
+                {figures.map((figure) => (
+                    <div key={figure.label} className="bg-card px-3 py-2">
+                        <p className="truncate text-[11px] font-medium uppercase tracking-[0.04em] text-muted-foreground">{figure.label}</p>
+                        <p className="text-lg font-medium tabular">{figure.value}</p>
+                    </div>
+                ))}
+            </div>
+
+            {proposals.items.length === 0 ? (
+                <p className="pt-4 text-center text-sm text-muted-foreground">Nothing waiting on you.</p>
+            ) : (
+                <ul className="mt-3 divide-y divide-border">
+                    {proposals.items.map((item) => (
+                        <li key={item.id}>
+                            <Link href={`/proposals/${item.id}`} className="group flex items-center gap-2 py-2.5">
+                                <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-sm font-medium group-hover:text-primary">{item.title}</span>
+                                    <span className="block truncate text-xs text-muted-foreground">
+                                        {item.deal} · {moneyCompact(item.total)}
+                                    </span>
+                                </span>
+                                <Pill tone={ACTION_TONE[item.action]}>{item.action}</Pill>
+                            </Link>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </DashCard>
     );
 }
 

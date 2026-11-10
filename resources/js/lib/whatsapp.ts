@@ -118,3 +118,29 @@ export function storyMessage({ subject, url, sender }: { subject: string | null;
         `— ${sender}, Take Care Connect`,
     ].join('\n');
 }
+
+/** Sends a proposal: the signed link opens it without an account. */
+export function proposalMessage({
+    contact,
+    title,
+    url,
+    validUntil,
+    sender,
+}: {
+    contact: string | null;
+    title: string;
+    url: string;
+    validUntil: string | null;
+    sender: string;
+}) {
+    return [
+        hello(contact),
+        '',
+        `As discussed, here is our proposal for ${title}:`,
+        url,
+        '',
+        validUntil ? `It is valid until ${validUntil}. Happy to walk you through it or adjust anything.` : 'Happy to walk you through it or adjust anything.',
+        '',
+        `— ${sender}, Take Care Connect`,
+    ].join('\n');
+}

@@ -34,7 +34,7 @@ class Target extends Model
     /** The month this belongs to, as a person would write it. */
     public function periodLabel(): string
     {
-        return Carbon::createFromFormat('Y-m', $this->period)->format('F Y');
+        return Carbon::createFromFormat('!Y-m', $this->period)->format('F Y');
     }
 
     public static function currentPeriod(): string

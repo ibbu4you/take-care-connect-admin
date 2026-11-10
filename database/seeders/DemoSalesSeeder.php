@@ -56,10 +56,10 @@ class DemoSalesSeeder extends Seeder
 
         $definitions = [
             ['Three-interview feature package', PipelineStage::Proposal, 145000, 0],
-            ['Annual social media retainer', PipelineStage::Qualified, 320000, 0],
-            ['Single craftsman profile', PipelineStage::Warm, 45000, 0],
-            ['Festival campaign films', PipelineStage::Cold, 210000, 40],
-            ['Website story series', PipelineStage::Intake, 90000, 0],
+            ['Annual social media retainer', PipelineStage::Negotiation, 320000, 0],
+            ['Single craftsman profile', PipelineStage::Meeting, 45000, 0],
+            ['Festival campaign films', PipelineStage::Contacted, 210000, 40],
+            ['Website story series', PipelineStage::New, 90000, 0],
             ['Launch video and posters', PipelineStage::Won, 175000, 0],
             ['Rebrand shoot', PipelineStage::Lost, 260000, 0],
         ];
@@ -75,7 +75,7 @@ class DemoSalesSeeder extends Seeder
                 'code' => $codes->next('DEA'),
                 'client_id' => $client->id,
                 'title' => $title,
-                'stage' => PipelineStage::Intake,
+                'stage' => PipelineStage::New,
                 'stage_entered_at' => now()->subDays(random_int(5, 40)),
                 'owner_id' => $manager->id,
                 'source' => 'referral',
@@ -88,7 +88,7 @@ class DemoSalesSeeder extends Seeder
 
             $stages->recordCreation($deal, $manager, 'Deal opened');
 
-            if ($stage !== PipelineStage::Intake) {
+            if ($stage !== PipelineStage::New) {
                 $stages->transition($deal, $stage, $manager);
             }
 

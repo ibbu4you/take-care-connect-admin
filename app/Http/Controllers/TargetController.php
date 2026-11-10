@@ -7,6 +7,7 @@ use App\Models\Interview;
 use App\Models\Target;
 use App\Models\User;
 use App\Support\Roles;
+use App\Support\Settings;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -35,7 +36,8 @@ class TargetController extends Controller
         // Somebody who can only see their own target gets a table of one row —
         // which is the honest answer, rather than an empty page.
         $people = $user->canAny(['targets.view.all', 'targets.manage'])
-            ? User::query()->active()->role(Roles::RELATIONSHIP_MANAGER)->orderBy('name')->get()
+            // Everybody who sells: the people a monthly target is set for.
+            ? User::query()->active()->role([Roles::RELATIONSHIP_MANAGER, Roles::SALES_EXECUTIVE, Roles::SALES_MANAGER])->orderBy('name')->get()
             : User::query()->whereKey($user->id)->get();
 
         $targets = Target::where('period', $period)
@@ -45,7 +47,11 @@ class TargetController extends Controller
 
         [$start, $end] = $this->bounds($period);
 
-        $rows = $people->map(function (User $person) use ($targets, $start, $end) {
+        // Off (0) unless an admin sets a rate in Settings → Sales; the column is
+        // then hidden rather than showing a row of ₹0 nobody is owed.
+        $commission = Settings::int('sales.commission_percent');
+
+        $rows = $people->map(function (User $person) use ($targets, $start, $end, $commission) {
             $target = $targets->get($person->id);
 
             $wonValue = (float) Deal::where('owner_id', $person->id)
@@ -71,19 +77,21 @@ class TargetController extends Controller
                 'deals_actual' => $wonCount,
                 'interviews_actual' => $interviews,
                 'attainment' => $this->attainment($wonValue, $target?->revenue_target),
+                'incentive' => $commission > 0 ? round($wonValue * $commission / 100, 2) : null,
                 'note' => $target?->note,
             ];
         });
 
         return Inertia::render('Targets/Index', [
             'period' => $period,
-            'periodLabel' => Carbon::createFromFormat('Y-m', $period)->format('F Y'),
+            'periodLabel' => Carbon::createFromFormat('!Y-m', $period)->format('F Y'),
             'periods' => $this->recentPeriods(),
             'rows' => $rows,
             'totals' => [
                 'revenue_target' => $rows->sum(fn (array $row) => $row['revenue_target'] ?? 0),
                 'revenue_actual' => $rows->sum(fn (array $row) => $row['revenue_actual']),
             ],
+            'commission' => $commission,
             'can' => ['manage' => $request->user()->can('targets.manage')],
         ]);
     }
@@ -127,7 +135,7 @@ class TargetController extends Controller
      */
     private function bounds(string $period): array
     {
-        $start = Carbon::createFromFormat('Y-m', $period)->startOfMonth();
+        $start = Carbon::createFromFormat('!Y-m', $period)->startOfMonth();
 
         return [$start, $start->copy()->endOfMonth()];
     }
