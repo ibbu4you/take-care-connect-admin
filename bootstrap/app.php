@@ -55,6 +55,23 @@ return Application::configure(basePath: dirname(__DIR__))
          | link still has the sidebar and a way back.
          */
         $exceptions->respond(function (Response $response, Throwable $exception, Request $request) {
+            // A CSRF token that died in a background tab: bounce back to the
+            // form with a message instead of showing the 419 page.
+            //
+            // Checked FIRST. Below, it was unreachable for every Inertia
+            // request — the error-page branch claimed the 419 — and that page
+            // was rendered without shared props, because the CSRF check runs
+            // before HandleInertiaRequests. On the login form that was a white
+            // screen. The login form shows field errors but not toasts, so it
+            // gets its message on the email field.
+            if ($response->getStatusCode() === 419) {
+                $message = 'That page expired. Please try again.';
+
+                return $request->is('login')
+                    ? back()->withErrors(['email' => $message])->onlyInput('email')
+                    : back()->with('error', $message);
+            }
+
             if (! app()->environment('local')
                 && in_array($response->getStatusCode(), [403, 404, 419, 500, 503], true)
                 && $request->header('X-Inertia')) {
@@ -63,12 +80,6 @@ return Application::configure(basePath: dirname(__DIR__))
                 ])
                     ->toResponse($request)
                     ->setStatusCode($response->getStatusCode());
-            }
-
-            // A CSRF token that died in a background tab: bounce back to the
-            // form with a message instead of showing the 419 page.
-            if ($response->getStatusCode() === 419) {
-                return back()->with('error', 'That page expired. Please try again.');
             }
 
             return $response;
