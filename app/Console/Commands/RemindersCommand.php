@@ -11,8 +11,10 @@ use App\Models\Lead;
 use App\Models\User;
 use App\Support\Notifier;
 use App\Support\Settings;
+use App\Support\Workflow\DeliverableStage;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * The morning digest.
@@ -63,8 +65,11 @@ class RemindersCommand extends Command
             }
 
             $total = $items->sum('count');
-            $title = $total === 1
-                ? ucfirst($items->first()['one'])
+
+            // One kind of thing: say what it is ("3 leads due a call"), not
+            // "3 things need you" with nothing underneath to say which.
+            $title = $items->count() === 1
+                ? ucfirst($items->first()['many'])
                 : "{$total} things need you today";
 
             /*
@@ -159,8 +164,14 @@ class RemindersCommand extends Command
                 fn (int $n) => "{$n} articles past their due date",
             ),
             $this->item(
+                // Only work in the creative's hands. Something submitted and
+                // waiting on the approver is not theirs to chase.
                 Deliverable::where('assigned_to', $person->getKey())
-                    ->open()
+                    ->whereIn('stage', [
+                        DeliverableStage::Pending->value,
+                        DeliverableStage::InProgress->value,
+                        DeliverableStage::Rejected->value,
+                    ])
                     ->whereDate('due_on', '<', $today)
                     ->count(),
                 'a deliverable is past its due date',
@@ -187,12 +198,30 @@ class RemindersCommand extends Command
         ];
     }
 
+    /**
+     * Once a day, however the first one was dealt with.
+     *
+     * Checking the notifications table alone meant clearing the digest earned
+     * a second one on the next run. The day's send is remembered separately.
+     */
     private function alreadySentToday(User $person): bool
     {
-        return $person->notifications()
+        $key = 'reminders:digest:'.$person->getKey().':'.now()->toDateString();
+
+        if (Cache::has($key)) {
+            return true;
+        }
+
+        $sent = $person->notifications()
             ->where('data->kind', 'reminder')
             ->whereDate('created_at', now()->toDateString())
             ->exists();
+
+        if (! $sent && ! $this->option('dry-run')) {
+            Cache::put($key, true, now()->endOfDay());
+        }
+
+        return $sent;
     }
 
     /**

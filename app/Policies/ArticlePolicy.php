@@ -13,8 +13,9 @@ use App\Support\Workflow\ArticleStage;
  * The rule that shapes most of this: **a writer may not approve their own
  * work.** Review exists to put a second pair of eyes on a piece before it goes
  * out under the organisation's name, and a review you can grant yourself is not
- * a review. An Admin can, via the Gate bypass, for the case where one person is
- * genuinely the whole content team that week.
+ * a review. That holds for an Admin too — there is no Gate bypass — and it
+ * covers whoever submitted the draft or uploaded one, not only the writer
+ * field, which can be changed.
  */
 class ArticlePolicy
 {
@@ -74,7 +75,7 @@ class ArticlePolicy
     {
         return $actor->can('articles.review')
             && $article->stage === ArticleStage::InternalReview
-            && $article->writer_id !== $actor->getKey()
+            && ! $this->shapedBy($actor, $article)
             && $this->view($actor, $article);
     }
 
@@ -99,12 +100,31 @@ class ArticlePolicy
 
     public function assign(User $actor, Article $article): bool
     {
-        return $actor->can('articles.assign') && $this->view($actor, $article);
+        // A published byline is a public record.
+        return $actor->can('articles.assign')
+            && $article->stage !== ArticleStage::Published
+            && $this->view($actor, $article);
     }
 
     public function delete(User $actor, Article $article): bool
     {
         return $actor->can('articles.delete') && $article->stage !== ArticleStage::Published;
+    }
+
+    /**
+     * Whether this person had a hand in the draft under review.
+     *
+     * The writer field alone could be changed by reassigning the article, so
+     * it also counts who sent it for review and who uploaded a draft to it —
+     * neither of which can be rewritten afterwards.
+     */
+    private function shapedBy(User $actor, Article $article): bool
+    {
+        $id = $actor->getKey();
+
+        return $article->writer_id === $id
+            || $article->submitted_by === $id
+            || $article->assets()->where('kind', 'document')->where('uploaded_by', $id)->exists();
     }
 
     public function uploadAssets(User $actor, Article $article): bool

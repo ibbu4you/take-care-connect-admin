@@ -91,14 +91,14 @@ interface EditorProps {
     };
 }
 
-export default function ArticleEditor({ article, categories, can }: EditorProps) {
+export default function ArticleEditor({ article, categories, writers, can }: EditorProps) {
     const [sendingBack, setSendingBack] = useState(false);
     const [publishing, setPublishing] = useState(false);
     const [showSource, setShowSource] = useState(false);
 
     const { errors: pageErrors } = usePage<SharedProps>().props;
 
-    const { data, setData, patch, processing, isDirty } = useForm({
+    const { data, setData, patch, processing, isDirty, errors } = useForm({
         title: article.title,
         category_id: article.category_id ? String(article.category_id) : '',
         city: article.city ?? '',
@@ -235,7 +235,7 @@ export default function ArticleEditor({ article, categories, can }: EditorProps)
                 <div className="space-y-6 xl:col-span-2">
                     <Card>
                         <CardContent className="space-y-4">
-                            <Field label="Headline" htmlFor="title" required>
+                            <Field label="Headline" htmlFor="title" required error={errors.title}>
                                 <Input
                                     id="title"
                                     value={data.title}
@@ -261,7 +261,7 @@ export default function ArticleEditor({ article, categories, can }: EditorProps)
                             <CardTitle>Publishing details</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <Field label="Becomes" htmlFor="target_type">
+                            <Field label="Becomes" htmlFor="target_type" error={errors.target_type}>
                                 <Select
                                     id="target_type"
                                     value={data.target_type}
@@ -273,7 +273,7 @@ export default function ArticleEditor({ article, categories, can }: EditorProps)
                                 </Select>
                             </Field>
 
-                            <Field label="Category" htmlFor="category_id">
+                            <Field label="Category" htmlFor="category_id" error={errors.category_id}>
                                 <Select
                                     id="category_id"
                                     value={data.category_id}
@@ -289,7 +289,7 @@ export default function ArticleEditor({ article, categories, can }: EditorProps)
                                 </Select>
                             </Field>
 
-                            <Field label="City" htmlFor="city">
+                            <Field label="City" htmlFor="city" error={errors.city}>
                                 <Input
                                     id="city"
                                     value={data.city}
@@ -298,7 +298,7 @@ export default function ArticleEditor({ article, categories, can }: EditorProps)
                                 />
                             </Field>
 
-                            <Field label="Deadline" htmlFor="due_on">
+                            <Field label="Deadline" htmlFor="due_on" error={errors.due_on}>
                                 <Input
                                     id="due_on"
                                     type="date"
@@ -311,6 +311,12 @@ export default function ArticleEditor({ article, categories, can }: EditorProps)
                         </CardContent>
                     </Card>
 
+                    <WriterCard
+                        articleId={article.id}
+                        writer={article.writer}
+                        writers={writers}
+                        canAssign={can.assign}
+                    />
 
                     <HistoryCard history={article.history} />
                 </div>
@@ -576,6 +582,77 @@ function PublishDialog({ open, onClose, articleId }: { open: boolean; onClose: (
                 </Field>
             </div>
         </Dialog>
+    );
+}
+
+/**
+ * Who is writing it, and — for whoever runs the content desk — a way to give
+ * it to somebody else.
+ *
+ * Not a form of its own: this sits inside the editor's form, and forms cannot
+ * nest, so the button sends the request directly.
+ */
+function WriterCard({
+    articleId,
+    writer,
+    writers,
+    canAssign,
+}: {
+    articleId: number;
+    writer: { id: number; name: string } | null;
+    writers: Array<{ id: number; name: string }>;
+    canAssign: boolean;
+}) {
+    const [choice, setChoice] = useState('');
+    const [saving, setSaving] = useState(false);
+    const { errors } = usePage<SharedProps>().props;
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Writer</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+                <p className="text-sm">{writer ? writer.name : <span className="text-muted-foreground">Nobody yet</span>}</p>
+
+                {canAssign && (
+                    <div className="flex items-end gap-2">
+                        <Field label="Give it to" htmlFor="assign_writer" error={errors.writer_id} className="min-w-0 flex-1">
+                            <Select id="assign_writer" value={choice} onChange={(event) => setChoice(event.target.value)}>
+                                <option value="">Choose…</option>
+                                {writers
+                                    .filter((person) => person.id !== writer?.id)
+                                    .map((person) => (
+                                        <option key={person.id} value={person.id}>
+                                            {person.name}
+                                        </option>
+                                    ))}
+                            </Select>
+                        </Field>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            loading={saving}
+                            disabled={choice === ''}
+                            onClick={() => {
+                                setSaving(true);
+                                router.post(
+                                    `/articles/${articleId}/assign`,
+                                    { writer_id: choice },
+                                    {
+                                        preserveScroll: true,
+                                        onSuccess: () => setChoice(''),
+                                        onFinish: () => setSaving(false),
+                                    },
+                                );
+                            }}
+                        >
+                            Assign
+                        </Button>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
     );
 }
 

@@ -34,6 +34,19 @@ class CategorySeeder extends Seeder
 
     public function run(): void
     {
+        /*
+         | A starting list, not a definition the database must follow.
+         |
+         | This runs on every deploy, and re-creating "missing" categories
+         | brought back the ones an admin had deleted and duplicated the ones
+         | they had renamed. Once any category exists, the list is theirs.
+         */
+        if (Category::query()->exists()) {
+            $this->command?->info('Categories already set up — left as they are.');
+
+            return;
+        }
+
         foreach (self::CATEGORIES as $index => $name) {
             Category::firstOrCreate(
                 ['slug' => Str::slug($name)],

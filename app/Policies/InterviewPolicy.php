@@ -81,15 +81,19 @@ class InterviewPolicy
     /**
      * Only the anchor on the interview may mark it conducted.
      *
-     * It is a statement about what they personally did, so it is not something
-     * a colleague can record on their behalf — an Admin can, via the Gate
-     * bypass, for the case where somebody has left.
+     * It is a statement about what they personally did, so a colleague cannot
+     * record it on their behalf. The exception is somebody who oversees every
+     * interview (Admin), for the case where the anchor has left — there is no
+     * Gate bypass, so that has to be said here.
      */
     public function conduct(User $actor, Interview $interview): bool
     {
-        return $actor->can('interviews.conduct')
-            && $interview->anchor_id === $actor->getKey()
-            && $interview->stage->isOpenForAnchor();
+        if (! $actor->can('interviews.conduct') || ! $interview->stage->isOpenForAnchor()) {
+            return false;
+        }
+
+        return $interview->anchor_id === $actor->getKey()
+            || Scope::seesEverything($actor, 'interviews');
     }
 
     public function handover(User $actor, Interview $interview): bool
@@ -102,13 +106,22 @@ class InterviewPolicy
 
     public function reassign(User $actor, Interview $interview): bool
     {
-        return $actor->can('interviews.reassign') && $this->view($actor, $interview);
+        // A cancelled or published interview has nobody left to hand it to.
+        return $actor->can('interviews.reassign')
+            && ! in_array($interview->stage, [InterviewStage::Cancelled, InterviewStage::Published], true)
+            && $this->view($actor, $interview);
     }
 
+    /**
+     * Only where cancelling is a legal move.
+     *
+     * "Not finished" was the old test, which offered Cancel on a conducted
+     * interview — a move the workflow then always refused.
+     */
     public function cancel(User $actor, Interview $interview): bool
     {
         return $actor->can('interviews.cancel')
-            && ! $interview->stage->isTerminal()
+            && in_array(InterviewStage::Cancelled, $interview->allowedNextStages(), true)
             && $this->view($actor, $interview);
     }
 
@@ -140,9 +153,12 @@ class InterviewPolicy
 
     public function deleteAsset(User $actor, Interview $interview): bool
     {
-        // Whoever may attach material may remove it, up until the point it has
+        // Its own permission — revoking `assets.delete` used to change nothing,
+        // because this asked about uploading. And only until the material has
         // been handed on and somebody else is relying on it.
-        return $this->uploadAssets($actor, $interview)
+        return $actor->can('assets.delete')
+            && $this->view($actor, $interview)
+            && ! $interview->stage->isTerminal()
             && $interview->stage->isOpenForAnchor();
     }
 
@@ -154,6 +170,9 @@ class InterviewPolicy
             }
         }
 
-        return false;
+        // A creative cutting any piece from this interview needs the source
+        // material — and keeps it when a second creative is brought in, which
+        // used to overwrite the single creative-owner field and lock them out.
+        return $interview->deliverables()->where('assigned_to', $actor->getKey())->exists();
     }
 }

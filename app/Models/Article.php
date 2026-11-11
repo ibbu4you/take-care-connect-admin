@@ -36,6 +36,7 @@ class Article extends Model
         'stage',
         'stage_entered_at',
         'submitted_at',
+        'submitted_by',
         'approved_at',
         'review_note',
         'due_on',

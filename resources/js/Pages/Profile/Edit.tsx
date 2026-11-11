@@ -45,7 +45,7 @@ export default function ProfileEdit({ profile, recovery_codes }: ProfileEditProp
                 subtitle="Your details and how you sign in. Your roles and permissions are set by an administrator."
             />
 
-            <div className="grid gap-6 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="space-y-6 lg:col-span-2">
                     <DetailsCard profile={profile} />
                     <PasswordCard />

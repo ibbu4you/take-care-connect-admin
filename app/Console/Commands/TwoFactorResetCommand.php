@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Clear somebody's two-factor enrolment from the server.
@@ -53,6 +54,7 @@ class TwoFactorResetCommand extends Command
             'two_factor_secret' => null,
             'two_factor_recovery_codes' => null,
             'two_factor_confirmed_at' => null,
+            'remember_token' => Str::random(60),
         ])->save();
 
         /*

@@ -26,6 +26,12 @@ class DemoInterviewSeeder extends Seeder
 {
     public function run(CodeGenerator $codes, StageMachine $stages, HandoverService $handovers): void
     {
+        if (app()->environment('production')) {
+            $this->command?->error(static::class.' will not run in production — it creates demo data.');
+
+            return;
+        }
+
         $anchor = User::role(Roles::ANCHOR)->first();
         $writer = User::role(Roles::CONTENT)->first();
         $creative = User::role(Roles::CREATIVE)->first();

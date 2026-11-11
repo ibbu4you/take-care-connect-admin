@@ -148,7 +148,7 @@ export default function LeadShow({ lead, statuses, outcomes, can }: ShowProps) {
                 </Card>
             )}
 
-            <div className="grid gap-6 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="space-y-6 lg:col-span-2">
                     {can.update && <LogCard leadId={lead.id} nextActionOn={lead.next_action_on} outcomes={outcomes} />}
 

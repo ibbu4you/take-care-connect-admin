@@ -10,6 +10,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -92,6 +93,37 @@ class DeliverableFileController extends Controller
             $file->path,
             $file->original_filename ?? basename($file->path),
         );
+    }
+
+    /**
+     * The file itself, shown in the page rather than saved.
+     *
+     * The type is read from the bytes on disk, not the name or what the
+     * browser claimed at upload, and only formats on the allow-list are served
+     * inline — anything else has to be downloaded. A file response rather than
+     * a stream, so a video can be scrubbed (range requests) instead of having
+     * to load from the start.
+     */
+    public function preview(Request $request, DeliverableFile $file): BinaryFileResponse
+    {
+        $this->authorize('downloadFile', $file->deliverable);
+
+        abort_if($file->isLink(), 404);
+
+        $disk = Storage::disk($file->disk);
+
+        abort_unless($disk->exists($file->path), 404);
+
+        $mime = (string) $disk->mimeType($file->path);
+
+        abort_unless(isset(DeliverableFile::PREVIEWABLE[$mime]), 415, 'This file cannot be previewed. Download it instead.');
+
+        return response()->file($disk->path($file->path), [
+            'Content-Type' => $mime,
+            'Content-Disposition' => 'inline',
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, max-age=86400',
+        ]);
     }
 
     public function destroy(Request $request, DeliverableFile $file): RedirectResponse

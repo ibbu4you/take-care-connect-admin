@@ -8,6 +8,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -86,7 +87,7 @@ class SettingController extends Controller
 
         Category::create([
             'name' => $validated['name'],
-            'slug' => Str::slug($validated['name']),
+            'slug' => $this->slugFor($validated['name']),
             'sort_order' => (int) Category::max('sort_order') + 1,
             'is_active' => true,
         ]);
@@ -113,11 +114,52 @@ class SettingController extends Controller
          */
         $category->update([
             'name' => $validated['name'],
-            'slug' => $category->articles()->exists() ? $category->slug : Str::slug($validated['name']),
+            'slug' => $category->articles()->exists() ? $category->slug : $this->slugFor($validated['name'], $category),
             'is_active' => $validated['is_active'],
         ]);
 
         return back()->with('success', 'Saved.');
+    }
+
+    /**
+     * A slug for this name that is non-empty and unused.
+     *
+     * Two names can share one ("Food & Drink" and "Food and Drink"), and a
+     * name with nothing sluggable in it has none at all; both used to reach
+     * the unique index and return a 500. Refused instead, in words.
+     */
+    private function slugFor(string $name, ?Category $ignore = null): string
+    {
+        $slug = Str::slug($name);
+
+        // A name in Tamil, Hindi or any other script has no Latin slug. That
+        // is a perfectly good category name, so it is given a numbered one.
+        if ($slug === '') {
+            $base = 'category';
+            $slug = $base;
+            $n = 2;
+
+            while (Category::withoutGlobalScopes()->where('slug', $slug)
+                ->when($ignore, fn ($query) => $query->whereKeyNot($ignore->getKey()))
+                ->exists()) {
+                $slug = $base.'-'.$n++;
+            }
+
+            return $slug;
+        }
+
+        $taken = Category::withoutGlobalScopes()
+            ->where('slug', $slug)
+            ->when($ignore, fn ($query) => $query->whereKeyNot($ignore->getKey()))
+            ->exists();
+
+        if ($taken) {
+            throw ValidationException::withMessages([
+                'name' => 'That is too close to an existing category name. Choose something more distinct.',
+            ]);
+        }
+
+        return $slug;
     }
 
     public function destroyCategory(Request $request, Category $category): RedirectResponse

@@ -121,7 +121,7 @@ class ProjectTest extends TestCase
         $manager = $this->userWithRole(Roles::RELATIONSHIP_MANAGER);
         $anchor = $this->userWithRole(Roles::ANCHOR);
 
-        $project = $this->project();
+        $project = $this->project(['owner_id' => $manager->id]);
 
         $this->actingAs($manager)
             ->post('/interviews', [
@@ -226,7 +226,7 @@ class ProjectTest extends TestCase
     public function test_a_manager_creates_a_project(): void
     {
         $manager = $this->userWithRole(Roles::RELATIONSHIP_MANAGER);
-        $client = $this->client();
+        $client = $this->client($manager);
 
         $this->actingAs($manager)
             ->post('/projects', [
@@ -262,7 +262,7 @@ class ProjectTest extends TestCase
 
         $this->actingAs($creator)
             ->post('/projects', [
-                'client_id' => $this->client()->id,
+                'client_id' => $this->client($creator)->id,
                 'title' => 'Handed over at birth',
                 'kind' => ProjectKind::InterviewFeature->value,
                 'status' => ProjectStatus::Open->value,
@@ -282,7 +282,7 @@ class ProjectTest extends TestCase
         $colleague = $this->userWithRole(Roles::RELATIONSHIP_MANAGER);
 
         $this->actingAs($creator)->post('/projects', [
-            'client_id' => $this->client()->id,
+            'client_id' => $this->client($creator)->id,
             'title' => 'Still mine to watch',
             'kind' => ProjectKind::InterviewFeature->value,
             'status' => ProjectStatus::Open->value,
@@ -349,7 +349,7 @@ class ProjectTest extends TestCase
         $manager = $this->userWithRole(Roles::RELATIONSHIP_MANAGER);
 
         $this->actingAs($manager)->post('/projects', [
-            'client_id' => $this->client()->id,
+            'client_id' => $this->client($manager)->id,
             'title' => 'Nobody chosen',
             'kind' => ProjectKind::InterviewFeature->value,
             'status' => ProjectStatus::Open->value,
@@ -376,7 +376,7 @@ class ProjectTest extends TestCase
 
         $this->actingAs($manager)
             ->post('/projects', [
-                'client_id' => $this->client()->id,
+                'client_id' => $this->client($manager)->id,
                 'title' => 'Price still being discussed',
                 'kind' => ProjectKind::InterviewFeature->value,
                 'status' => ProjectStatus::Open->value,
@@ -467,7 +467,7 @@ class ProjectTest extends TestCase
 
         return Project::create([
             'code' => app(CodeGenerator::class)->next('PRJ'),
-            'client_id' => $attributes['client_id'] ?? $this->client()->id,
+            'client_id' => $attributes['client_id'] ?? $this->client(User::find($owner))->id,
             'title' => 'Project '.fake()->unique()->words(2, true),
             'kind' => ProjectKind::InterviewFeature,
             'status' => ProjectStatus::Open,
@@ -478,9 +478,10 @@ class ProjectTest extends TestCase
         ]);
     }
 
-    private function client(): Client
+    /** A client — belonging to the given manager, since a manager may only file work under their own. */
+    private function client(?User $owner = null): Client
     {
-        $manager = $this->userWithRole(Roles::RELATIONSHIP_MANAGER);
+        $manager = $owner ?? $this->userWithRole(Roles::RELATIONSHIP_MANAGER);
 
         return Client::create([
             'name' => 'Client '.fake()->unique()->words(2, true),

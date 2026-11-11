@@ -65,9 +65,16 @@ class ProjectPolicy
         return $actor->can('projects.create');
     }
 
+    /**
+     * Editing is for whoever runs the project — not everybody who can read it.
+     *
+     * Reading is deliberately wide (anyone working on one of its interviews),
+     * and editing used to follow it, so booking a single interview under a
+     * colleague's project made you a full editor of it.
+     */
     public function update(User $actor, Project $project): bool
     {
-        return $actor->can('projects.update') && $this->view($actor, $project);
+        return $actor->can('projects.update') && $this->runs($actor, $project);
     }
 
     /**
@@ -76,10 +83,19 @@ class ProjectPolicy
      */
     public function delete(User $actor, Project $project): bool
     {
-        if ($project->interviews()->exists()) {
+        // Anything filed under it — interviews, or deals that may already be
+        // won and counted in revenue — is history, not a mistake.
+        if ($project->interviews()->exists() || $project->deals()->exists()) {
             return false;
         }
 
-        return $actor->can('projects.delete');
+        return $actor->can('projects.delete') && $this->runs($actor, $project);
+    }
+
+    private function runs(User $actor, Project $project): bool
+    {
+        return Scope::seesEverything($actor, 'projects')
+            || $project->owner_id === $actor->getKey()
+            || $project->created_by === $actor->getKey();
     }
 }

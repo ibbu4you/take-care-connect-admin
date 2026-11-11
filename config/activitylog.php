@@ -10,10 +10,11 @@ return [
     'enabled' => env('ACTIVITY_LOGGER_ENABLED', true),
 
     /*
-     * When the clean-command is executed, all recording activities older than
-     * the number of days specified here will be deleted.
+     * Only used by `activitylog:clean`, which this app never schedules: the
+     * audit log is deliberately kept in full (see routes/console.php). Set
+     * very high so running the command by hand cannot quietly cut the trail.
      */
-    'delete_records_older_than_days' => 365,
+    'delete_records_older_than_days' => 36500,
 
     /*
      * If no log name is passed to the activity() helper

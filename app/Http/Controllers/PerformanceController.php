@@ -122,7 +122,7 @@ class PerformanceController extends Controller
                     ...$this->person($person),
                     'done' => $published->count(),
                     'open' => $open->count(),
-                    'overdue' => $open->filter(fn (Article $a) => $a->due_on?->isPast() === true)->count(),
+                    'overdue' => $open->filter(fn (Article $a) => $a->due_on?->lt(today()) === true)->count(),
 
                     'turnaround' => Stats::median(
                         $published
@@ -181,17 +181,24 @@ class PerformanceController extends Controller
      */
     private function managers(Carbon $from, Carbon $to): array
     {
-        $period = Target::currentPeriod();
+        // Every month in the window: three months of revenue is measured
+        // against three months of targets, not one (which read 300% for
+        // somebody exactly on target).
+        $periods = [];
+
+        for ($month = $from->copy()->startOfMonth(); $month->lte($to); $month->addMonthNoOverflow()) {
+            $periods[] = $month->format('Y-m');
+        }
 
         return $this->table(
-            $this->withRole(Roles::RELATIONSHIP_MANAGER)->map(function (User $person) use ($from, $to, $period): array {
+            $this->withRole(Roles::RELATIONSHIP_MANAGER)->map(function (User $person) use ($from, $to, $periods): array {
                 $closed = Deal::where('owner_id', $person->id)
                     ->won()
                     ->whereBetween('closed_at', [$from, $to])
                     ->get();
 
                 $won = (float) $closed->sum(fn (Deal $deal) => (float) $deal->actual_value);
-                $target = (float) (Target::where('user_id', $person->id)->where('period', $period)->value('revenue_target') ?? 0);
+                $target = (float) Target::where('user_id', $person->id)->whereIn('period', $periods)->sum('revenue_target');
 
                 return [
                     ...$this->person($person),
@@ -306,7 +313,7 @@ class PerformanceController extends Controller
         $months = in_array($months, [1, 3, 6, 12], true) ? $months : 3;
 
         return [
-            now()->subMonths($months - 1)->startOfMonth(),
+            now()->startOfMonth()->subMonthsNoOverflow($months - 1),
             now()->endOfMonth(),
             $months,
         ];

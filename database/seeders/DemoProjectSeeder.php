@@ -28,6 +28,12 @@ class DemoProjectSeeder extends Seeder
 {
     public function run(CodeGenerator $codes): void
     {
+        if (app()->environment('production')) {
+            $this->command?->error(static::class.' will not run in production — it creates demo data.');
+
+            return;
+        }
+
         $manager = User::role(Roles::RELATIONSHIP_MANAGER)->first();
 
         if (! $manager) {

@@ -11,7 +11,7 @@ namespace App\Support\Workflow;
  * and no content-team involvement at all.
  *
  * That is why the handover requirements differ so sharply: a business interview
- * cannot be handed over without a document, a recording and typed Q&A, because
+ * cannot be handed over without the transcript and the recording, because
  * somebody else has to write from them. A social interview needs none of that,
  * because the person who ran it is the person who finishes it.
  */
@@ -39,7 +39,7 @@ enum InterviewKind: string
     {
         return match ($this) {
             self::CelebritySocial => 'Interviewed in person. Goes to the creative team for reels and posters — no website article.',
-            self::BusinessArticle => 'Over Google Meet. Handed to the content team with the write-up, recording and Q&A, and becomes an article.',
+            self::BusinessArticle => 'Over Google Meet. Handed to the content team with the transcript and recording, and becomes an article.',
             self::MeetSocial => 'Over Google Meet. Goes to the creative team for reels and posters — no website article.',
         };
     }

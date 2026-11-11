@@ -153,7 +153,7 @@ final class Permissions
             'permissions' => [
                 'deliverables.view' => 'See deliverables assigned to them',
                 'deliverables.view.all' => 'See every deliverable',
-                'deliverables.create' => 'Commission a poster, reel or edit',
+                'deliverables.create' => 'Request a poster, reel or edit',
                 'deliverables.update' => 'Edit the brief, caption or due date',
                 'deliverables.work' => 'Upload work and submit it for review',
                 'deliverables.assign' => 'Assign a deliverable to someone',

@@ -28,7 +28,7 @@ class FollowUp extends Model
 
     public function isOverdue(): bool
     {
-        return $this->state === 'pending' && $this->due_on?->isPast();
+        return $this->state === 'pending' && $this->due_on?->lt(today()) === true; // A date: due today is not yet overdue.
     }
 
     /** @return BelongsTo<Client, $this> */

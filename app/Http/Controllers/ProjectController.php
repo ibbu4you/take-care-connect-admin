@@ -6,6 +6,7 @@ use App\Models\Client;
 use App\Models\Deal;
 use App\Models\Project;
 use App\Models\User;
+use App\Rules\VisibleTo;
 use App\Services\CodeGenerator;
 use App\Support\Notifier;
 use App\Support\Roles;
@@ -16,6 +17,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -40,7 +42,9 @@ class ProjectController extends Controller
         ];
 
         $projects = $this->scoped($request->user())
-            ->with(['client:id,name', 'owner:id,name'])
+            // Interviews loaded once for the whole page, with only what the
+            // progress bar reads — it used to query them row by row.
+            ->with(['client:id,name', 'owner:id,name', 'interviews:id,project_id,stage'])
             ->withCount('interviews')
             ->when($filters['search'] !== '', function (Builder $query) use ($filters) {
                 $term = "%{$filters['search']}%";
@@ -207,7 +211,23 @@ class ProjectController extends Controller
     {
         $this->authorize('update', $project);
 
-        $project->update($this->validated($request));
+        $validated = $this->validated($request);
+
+        /*
+         | A project's client is settled once work is filed under it.
+         |
+         | Moving it would leave its interviews and deals pointing at the old
+         | client while the project claimed the new one — two answers to "whose
+         | work is this", and the wrong manager seeing it.
+         */
+        if ((int) $validated['client_id'] !== (int) $project->client_id
+            && ($project->interviews()->exists() || $project->deals()->exists())) {
+            throw ValidationException::withMessages([
+                'client_id' => 'This project already has interviews or deals filed under its client, so the client cannot change. Start a new project instead.',
+            ]);
+        }
+
+        $project->update($validated);
 
         return redirect()
             ->route('projects.show', $project)
@@ -259,7 +279,9 @@ class ProjectController extends Controller
     private function validated(Request $request): array
     {
         return $request->validate([
-            'client_id' => ['required', 'exists:clients,id'],
+            'client_id' => ['required', 'integer', new VisibleTo(
+                Client::query(), $request->user(), 'clients', ['owner_id', 'created_by'], 'Choose one of your clients.',
+            )],
             'title' => ['required', 'string', 'max:255'],
             'kind' => ['required', Rule::in(ProjectKind::values())],
             'status' => ['required', Rule::in(ProjectStatus::values())],
@@ -292,7 +314,7 @@ class ProjectController extends Controller
      * what an Admin expects after ticking the box, and what a hard-coded role
      * check would quietly get wrong.
      *
-     * @return \Illuminate\Support\Collection<int, array{id: int, name: string}>
+     * @return Collection<int, array{id: int, name: string}>
      */
     private function ownerOptions(): Collection
     {

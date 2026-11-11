@@ -8,6 +8,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
+use Illuminate\Session\Middleware\AuthenticateSession;
 use Inertia\Inertia;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 use Spatie\Permission\Middleware\RoleMiddleware;
@@ -22,6 +23,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
+            // Signs a session out when its account's password changes
+            // elsewhere. Without it, "other devices have been signed out"
+            // after a password change was not true.
+            AuthenticateSession::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);
@@ -55,20 +60,24 @@ return Application::configure(basePath: dirname(__DIR__))
          | link still has the sidebar and a way back.
          */
         $exceptions->respond(function (Response $response, Throwable $exception, Request $request) {
+            // A CSRF token that died in a background tab: bounce back to the
+            // form, input kept, with a message — instead of the 419 page and a
+            // lost form. Checked first: the error-page branch below would
+            // otherwise swallow it, which is why this never used to run.
+            if ($response->getStatusCode() === 419) {
+                return back()
+                    ->withInput($request->except(['password', 'password_confirmation', 'current_password', '_token']))
+                    ->with('error', 'That page expired. Please try again.');
+            }
+
             if (! app()->environment('local')
-                && in_array($response->getStatusCode(), [403, 404, 419, 500, 503], true)
+                && in_array($response->getStatusCode(), [403, 404, 500, 503], true)
                 && $request->header('X-Inertia')) {
                 return Inertia::render('Errors/Status', [
                     'status' => $response->getStatusCode(),
                 ])
                     ->toResponse($request)
                     ->setStatusCode($response->getStatusCode());
-            }
-
-            // A CSRF token that died in a background tab: bounce back to the
-            // form with a message instead of showing the 419 page.
-            if ($response->getStatusCode() === 419) {
-                return back()->with('error', 'That page expired. Please try again.');
             }
 
             return $response;

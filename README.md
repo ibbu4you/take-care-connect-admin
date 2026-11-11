@@ -230,8 +230,8 @@ Two pieces of this phase are load-bearing for everything after it:
   from the column it describes. Articles, deliverables and deals all move
   through it in later phases.
 - **The handover rule.** A business interview cannot reach the content team
-  without the write-up document, the recording (uploaded or linked) and the
-  typed Q&A. `Interview::missingForHandover()` is the single definition;
+  without the transcript and the recording (uploaded or linked).
+  `Interview::missingForHandover()` is the single definition;
   `HandoverService` enforces it, and the interview page shows what is
   outstanding *before* anybody presses the button. A truth table over all eight
   combinations is in `InterviewWorkflowTest`.
@@ -251,16 +251,18 @@ The rules that carry this phase:
 - **An article is created by the handover, in the same transaction.** Left to be
   created by hand, a handover becomes an item in somebody's head — the interview
   claims to be with the content team and there is nothing in the queue to show
-  for it. The draft is seeded with the anchor's Q&A folded into prose, which
-  saves the writer transcribing and keeps the quotes accurate.
-- **A writer cannot approve their own work.** A review you can grant yourself is
-  not a review.
+  for it. The anchor's brief travels with it as source material, beside the
+  transcript, where a writer looks for it.
+- **Nobody approves work they shaped.** Not the writer, not whoever submitted
+  it, and not anybody who uploaded a draft — Admin included. Changing the draft
+  or its details during review, or after approval, sends it back. A review you
+  can grant yourself is not a review.
 - **Nothing publishes without the live URL.** Until it is recorded, this system
   cannot tell a published article from an approved one nobody got round to — so
   the URL is what closes the loop, and it is required.
-- **The body is sanitised on write, never on read.** It ends up pasted onto a
-  public website; cleaning on output would leave the dangerous version in the
-  database waiting for the one place that forgets to filter.
+- **Only safe files are shown in the browser.** Drafts must be documents and
+  photos must be images; a creative cut is previewed inline only when its
+  contents are an image or a video, and everything else is a download.
 
 **Phase 5 — Creative. Complete.** Deliverables hanging off an interview *or* an
 article, versioned uploads, the approval loop, the board, and recorded social

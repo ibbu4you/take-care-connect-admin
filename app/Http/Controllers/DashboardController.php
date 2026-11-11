@@ -140,7 +140,8 @@ class DashboardController extends Controller
                 ->get();
 
             foreach ($waiting as $lead) {
-                $days = (int) round($lead->next_action_on->diffInDays(now()));
+                // Calendar days: measured to the clock, 6pm turned yesterday into "2 days ago".
+                $days = (int) $lead->next_action_on->copy()->startOfDay()->diffInDays(today());
 
                 $items[] = [
                     'kind' => 'lead',

@@ -7,6 +7,7 @@ use App\Models\Interview;
 use App\Models\Lead;
 use App\Models\LeadCall;
 use App\Models\SocialPost;
+use App\Support\Csv;
 use App\Support\Workflow\CallOutcome;
 use App\Support\Workflow\InterviewKind;
 use Illuminate\Http\Request;
@@ -98,10 +99,10 @@ class ImpactController extends Controller
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF"); // So Excel opens it as UTF-8.
-            fputcsv($out, ['Interviewed on', 'Business', 'Person', 'City', 'Trade', 'Kind', 'Story link']);
+            Csv::put($out, ['Interviewed on', 'Business', 'Person', 'City', 'Trade', 'Kind', 'Story link']);
 
             foreach ($rows as $row) {
-                fputcsv($out, [$row['date'], $row['business'], $row['person'], $row['city'], $row['trade'], $row['kind_label'], $row['url']]);
+                Csv::put($out, [$row['date'], $row['business'], $row['person'], $row['city'], $row['trade'], $row['kind_label'], $row['url']]);
             }
 
             fclose($out);

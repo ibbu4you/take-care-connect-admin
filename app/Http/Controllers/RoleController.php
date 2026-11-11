@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Policies\UserPolicy;
 use App\Support\Permissions;
 use App\Support\Roles;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Spatie\Permission\Models\Role;
@@ -66,9 +68,26 @@ class RoleController extends Controller
             'permissions.*' => ['string', Rule::in(Permissions::all())],
         ]);
 
-        $role->syncPermissions($validated['permissions'] ?? []);
+        $permissions = $validated['permissions'] ?? [];
 
-        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        /*
+         | The Admin role keeps the keys to the building.
+         |
+         | Unticking "manage accounts" or "manage roles" on Admin takes it from
+         | every administrator at once, and re-seeding does not put it back
+         | (existing roles are left alone) — nobody could ever reopen this page.
+         */
+        if ($role->name === Roles::ADMIN) {
+            $missing = array_diff(UserPolicy::ADMIN_ESSENTIALS, $permissions);
+
+            if ($missing !== []) {
+                throw ValidationException::withMessages([
+                    'permissions' => 'The Admin role must keep account and role management ('.implode(', ', $missing).'), or nobody could give them back.',
+                ]);
+            }
+        }
+
+        $this->syncAndLog($request, $role, $permissions, 'role permissions changed');
 
         return back()->with('success', "Updated what the {$role->name} role grants.");
     }
@@ -82,10 +101,38 @@ class RoleController extends Controller
 
         abort_if($definition === null, 404);
 
-        $role->syncPermissions($definition);
-
-        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $this->syncAndLog($request, $role, $definition, 'role permissions reset');
 
         return back()->with('success', "Reset {$role->name} to its default permissions.");
+    }
+
+    /**
+     * Change what a role grants, and say so in the audit log.
+     *
+     * A role change alters what everybody holding it can do, so "who gave Sales
+     * access to every client, and when?" has to be answerable afterwards.
+     *
+     * @param  array<int, string>  $permissions
+     */
+    private function syncAndLog(Request $request, Role $role, array $permissions, string $event): void
+    {
+        $before = $role->permissions()->pluck('name')->sort()->values()->all();
+
+        $role->syncPermissions($permissions);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        $after = $role->permissions()->pluck('name')->sort()->values()->all();
+
+        if ($before !== $after) {
+            activity()
+                ->performedOn($role)
+                ->causedBy($request->user())
+                ->withProperties([
+                    'role' => $role->name,
+                    'added' => array_values(array_diff($after, $before)),
+                    'removed' => array_values(array_diff($before, $after)),
+                ])
+                ->log($event);
+        }
     }
 }

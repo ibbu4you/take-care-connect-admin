@@ -1,4 +1,4 @@
-import { usePage } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CommandPalette } from '@/Components/layout/CommandPalette';
 import { Sidebar } from '@/Components/layout/Sidebar';
@@ -16,6 +16,18 @@ import type { SharedProps } from '@/types';
  * unmounts and remounts on every click, the scroll position of a long menu
  * resets, and any open dropdown closes mid-interaction.
  */
+/** Error keys that name an action rather than a form field. */
+const ACTION_ERROR_KEYS = [
+    'stage',
+    'review',
+    'handover',
+    'convert',
+    'status',
+    'permissions',
+    'denied_permissions',
+    'parent_id',
+] as const;
+
 export function AdminLayout({ children }: { children: ReactNode }) {
     const [navOpen, setNavOpen] = useState(false);
     const [searchOpen, setSearchOpen] = useState(false);
@@ -41,19 +53,39 @@ export function AdminLayout({ children }: { children: ReactNode }) {
      | navigations, so an effect keyed on the props object alone would re-fire
      | and re-toast the same "Saved" on the next unrelated page load.
      */
-    const { success, error, info } = props.flash ?? { success: null, error: null, info: null };
+    useEffect(() => {
+        const show = (flash: SharedProps['flash'] | undefined) => {
+            if (flash?.success) notify(flash.success, 'success');
+            if (flash?.error) notify(flash.error, 'error');
+            if (flash?.info) notify(flash.info, 'info');
+        };
+
+        // The page this layout first rendered with.
+        show(props.flash);
+
+        // Then once per completed request — not per change of text, which
+        // swallowed a second "Saved." straight after the first.
+        return router.on('success', (event) => {
+            show((event.detail.page.props as unknown as SharedProps).flash);
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [notify]);
+
+    /*
+     | Refusals that belong to an action, not a field.
+     |
+     | "That move has its own button", "This lead is already a client", "You
+     | cannot revoke your own access" — the server sends these under keys no
+     | input on the page displays, so a refused click used to look like a click
+     | that did nothing. They are shown as error toasts instead.
+     */
+    const actionErrors = ACTION_ERROR_KEYS.map((key) => props.errors?.[key]).filter(Boolean).join('\n');
 
     useEffect(() => {
-        if (success) notify(success, 'success');
-    }, [success, notify]);
-
-    useEffect(() => {
-        if (error) notify(error, 'error');
-    }, [error, notify]);
-
-    useEffect(() => {
-        if (info) notify(info, 'info');
-    }, [info, notify]);
+        if (actionErrors) {
+            actionErrors.split('\n').forEach((message) => notify(message, 'error'));
+        }
+    }, [actionErrors, notify]);
 
     // Ctrl/Cmd-K from anywhere. Bound here rather than in the palette so the
     // shortcut works while the palette is closed and unmounted.

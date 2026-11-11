@@ -8,6 +8,7 @@ use App\Models\Note;
 use App\Models\User;
 use App\Services\CodeGenerator;
 use App\Services\LeadConverter;
+use App\Support\Csv;
 use App\Support\Roles;
 use App\Support\Workflow\CallOutcome;
 use App\Support\Workflow\LeadSource;
@@ -226,7 +227,16 @@ class LeadController extends Controller
     {
         $this->authorize('update', $lead);
 
-        $lead->update($this->validated($request, $lead));
+        $validated = $this->validated($request, $lead);
+
+        // A converted lead stays converted. The form cannot offer that status,
+        // so saving it used to quietly reset the lead to whatever was picked —
+        // and an unconverted lead can be converted again, into a second client.
+        if ($lead->status->isFinal()) {
+            unset($validated['status']);
+        }
+
+        $lead->update($validated);
 
         return redirect()
             ->route('leads.show', $lead)
@@ -277,6 +287,15 @@ class LeadController extends Controller
         ]);
 
         $status = LeadStatus::from($validated['status']);
+
+        if ($lead->status->isFinal()) {
+            return back()->withErrors(['status' => 'This lead is already a client. Its status cannot change.']);
+        }
+
+        // "Not a fit" needs the reason — a blank one tells the next caller nothing.
+        if ($status === LeadStatus::Unqualified && blank($validated['lost_reason'] ?? null)) {
+            return back()->withErrors(['lost_reason' => 'Say why it is not a fit.']);
+        }
 
         $lead->update([
             'status' => $status,
@@ -330,14 +349,14 @@ class LeadController extends Controller
         return response()->streamDownload(function () use ($query) {
             $handle = fopen('php://output', 'wb');
 
-            fputcsv($handle, [
+            Csv::put($handle, [
                 'Code', 'Name', 'Contact', 'Phone', 'Email', 'Trade', 'City',
                 'Source', 'Status', 'Owner', 'Next action', 'Added',
             ]);
 
             $query->orderBy('name')->chunk(200, function ($leads) use ($handle) {
                 foreach ($leads as $lead) {
-                    fputcsv($handle, [
+                    Csv::put($handle, [
                         $lead->code,
                         $lead->name,
                         $lead->contact_person,

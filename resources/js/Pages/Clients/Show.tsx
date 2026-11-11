@@ -94,7 +94,8 @@ export default function ClientShow({ client, can }: ShowProps) {
                         </Button>
                         {can.bookInterview && (
                             <Button asChild variant="outline">
-                                <Link href="/interviews/create">
+                                {/* Carries the client, so the form opens with it chosen. */}
+                                <Link href={`/interviews/create?client=${client.id}`}>
                                     <Mic />
                                     Book an interview
                                 </Link>
@@ -112,7 +113,7 @@ export default function ClientShow({ client, can }: ShowProps) {
                 }
             />
 
-            <div className="grid gap-6 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="space-y-6 lg:col-span-2">
                     <Card>
                         <CardHeader>

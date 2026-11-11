@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { Head, Link, router } from '@inertiajs/react';
 import { AlarmClock, Bell, CheckCheck, Clapperboard, FileText, Mic, Trash2, Undo2, UserPlus } from 'lucide-react';
 import { PageHeader } from '@/Components/layout/PageHeader';
@@ -37,6 +38,20 @@ const KINDS: Record<string, { icon: typeof Bell; className: string }> = {
     reminder: { icon: AlarmClock, className: 'bg-muted text-muted-foreground' },
 };
 
+
+/**
+ * Opening a notification is what marks it read — a separate button would be a
+ * second click for something the first already proved.
+ *
+ * Sent in the background rather than as a page visit: as a visit, the
+ * navigation the same click started cancelled it, so the notification often
+ * stayed unread.
+ */
+function markRead(notification: { id: string; read: boolean }) {
+    if (!notification.read) {
+        void axios.post(`/notifications/${notification.id}/read`).catch(() => undefined);
+    }
+}
 
 export default function NotificationsIndex({ notifications, unread }: IndexProps) {
     return (
@@ -144,22 +159,19 @@ export default function NotificationsIndex({ notifications, unread }: IndexProps
 
                                 return (
                                     <li key={notification.id}>
-                                        {notification.url ? (
-                                            <Link
+                                        {notification.url && /^https?:\/\//.test(notification.url) ? (
+                                            // A link off the admin — the live story, say —
+                                            // opens in a new tab like any other link.
+                                            <a
                                                 href={notification.url}
-                                                // Opening it is what marks it read — a
-                                                // separate "mark read" button is a
-                                                // second click for something the first
-                                                // click already proved.
-                                                onClick={() =>
-                                                    !notification.read &&
-                                                    router.post(
-                                                        `/notifications/${notification.id}/read`,
-                                                        {},
-                                                        { preserveScroll: true, preserveState: true },
-                                                    )
-                                                }
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                onClick={() => markRead(notification)}
                                             >
+                                                {body}
+                                            </a>
+                                        ) : notification.url ? (
+                                            <Link href={notification.url} onClick={() => markRead(notification)}>
                                                 {body}
                                             </Link>
                                         ) : (

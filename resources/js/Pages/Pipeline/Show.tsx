@@ -103,7 +103,7 @@ interface ActivityTypeOption {
     outcomes: Array<{ value: string; label: string }>;
 }
 
-export default function DealShow({ deal, activityTypes, can }: ShowProps) {
+export default function DealShow({ deal, stages, activityTypes, can }: ShowProps) {
     const [closing, setClosing] = useState<'won' | 'lost' | null>(null);
     const closed = deal.outcome !== null;
 
@@ -136,6 +136,30 @@ export default function DealShow({ deal, activityTypes, can }: ShowProps) {
                                 Pipeline
                             </Link>
                         </Button>
+
+                        {/* The keyboard's way to move a deal — the board only offers dragging. */}
+                        {can.move && !closed && (
+                            <Select
+                                aria-label="Move to stage"
+                                value={deal.stage}
+                                className="w-auto"
+                                onChange={(event) =>
+                                    router.post(
+                                        `/deals/${deal.id}/move`,
+                                        { stage: event.target.value },
+                                        { preserveScroll: true },
+                                    )
+                                }
+                            >
+                                {stages
+                                    .filter((stage) => stage.value !== 'won' && stage.value !== 'lost')
+                                    .map((stage) => (
+                                        <option key={stage.value} value={stage.value}>
+                                            {stage.label}
+                                        </option>
+                                    ))}
+                            </Select>
+                        )}
 
                         {can.close && !closed && (
                             <>
@@ -185,7 +209,7 @@ export default function DealShow({ deal, activityTypes, can }: ShowProps) {
 
             {!closed && <NextStepCard deal={deal} />}
 
-            <div className="grid gap-6 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="space-y-6 lg:col-span-2">
                     {can.update && !closed && <LogCard deal={deal} types={activityTypes} />}
                     <ProposalsCard deal={deal} canPropose={can.propose && !closed} />
@@ -250,7 +274,7 @@ export default function DealShow({ deal, activityTypes, can }: ShowProps) {
 }
 
 function ValueCard({ deal, readOnly }: { deal: ShowProps['deal']; readOnly: boolean }) {
-    const { data, setData, patch, processing, isDirty } = useForm({
+    const { data, setData, patch, processing, isDirty, errors } = useForm({
         title: deal.title,
         expected_value: String(deal.expected_value),
         expected_close_on: deal.expected_close_on ?? '',
@@ -274,7 +298,7 @@ function ValueCard({ deal, readOnly }: { deal: ShowProps['deal']; readOnly: bool
             </CardHeader>
             <CardContent>
                 <form onSubmit={submit} className="space-y-4">
-                    <Field label="Title" htmlFor="title">
+                    <Field label="Title" htmlFor="title" error={errors.title}>
                         <Input
                             id="title"
                             value={data.title}
@@ -283,7 +307,7 @@ function ValueCard({ deal, readOnly }: { deal: ShowProps['deal']; readOnly: bool
                         />
                     </Field>
 
-                    <Field label="Expected value" htmlFor="expected_value" hint="In rupees.">
+                    <Field label="Expected value" htmlFor="expected_value" hint="In rupees." error={errors.expected_value}>
                         <Input
                             id="expected_value"
                             type="number"
@@ -298,6 +322,7 @@ function ValueCard({ deal, readOnly }: { deal: ShowProps['deal']; readOnly: bool
                         label="Probability"
                         htmlFor="probability"
                         hint="Follows the stage unless you set it here."
+                        error={errors.probability}
                     >
                         <Input
                             id="probability"
@@ -310,7 +335,7 @@ function ValueCard({ deal, readOnly }: { deal: ShowProps['deal']; readOnly: bool
                         />
                     </Field>
 
-                    <Field label="Expected close" htmlFor="expected_close_on">
+                    <Field label="Expected close" htmlFor="expected_close_on" error={errors.expected_close_on}>
                         <Input
                             id="expected_close_on"
                             type="date"

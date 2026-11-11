@@ -2,10 +2,13 @@ import { Head, Link } from '@inertiajs/react';
 import {
     AlertTriangle,
     Clapperboard,
+    Download,
     ExternalLink,
+    Eye,
     Film,
     Globe,
     Image as ImageIcon,
+    Inbox,
     Search,
     Send,
     X,
@@ -14,6 +17,7 @@ import {
 import { useMemo, useState } from 'react';
 import { Pill } from '@/Components/dashboard/parts';
 import { TopbarHeading } from '@/Components/layout/TopbarSlot';
+import { MediaThumb, MediaViewer, type MediaInfo, type ViewerItem } from '@/Components/work/MediaViewer';
 import { ViewSwitch } from '@/Components/work/ViewSwitch';
 import { Card } from '@/Components/ui/card';
 import { Avatar, EmptyState } from '@/Components/ui/misc';
@@ -21,6 +25,7 @@ import { stageMeta } from '@/config/stages';
 import { usePermissions } from '@/hooks/usePermissions';
 import { adminLayout } from '@/Layouts/AdminLayout';
 import { deliverableTiming } from '@/lib/deliverables';
+import { duration as formatDuration } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 export interface DeliverableRow {
@@ -44,6 +49,8 @@ export interface DeliverableRow {
     parent_id: number;
     file_count: number;
     current_version: number | null;
+    media: MediaInfo | null;
+    social_thumbnail: string | null;
     has_social_link: boolean;
     social_url: string | null;
     published_at: string | null;
@@ -64,7 +71,7 @@ interface BoardProps {
  * publishing requires the link. Dragging a card would either bypass those or
  * fail silently halfway, so the moves live on the deliverable itself.
  *
- * The lanes wrap (two, then three, then all six across) instead of scrolling
+ * The lanes wrap (two across, then four) instead of scrolling
  * sideways: a horizontal scrollbar under a board hides the right-hand half of
  * the pipeline — exactly the approved and published work a manager is looking
  * for — behind a gesture nobody finds on a desktop mouse.
@@ -101,6 +108,22 @@ export default function DeliverableBoard({ columns, rejected, counts }: BoardPro
     const shown = lanes.reduce((sum, lane) => sum + lane.items.length, 0) + sentBack.length;
     const filtering = query !== '' || mine || kind !== 'all';
 
+    // The viewer steps through what is on screen, in board order.
+    const [viewing, setViewing] = useState<number | null>(null);
+    const viewerItems: ViewerItem[] = [...sentBack, ...lanes.flatMap((lane) => lane.items)]
+        .filter((item) => item.media !== null)
+        .map((item) => ({
+            key: item.id,
+            media: item.media as MediaInfo,
+            title: `${item.title || item.kind_label}${item.slot_number > 1 ? ` ${item.slot_number}` : ''}`,
+            subtitle: `${item.code} · ${item.stage_label}`,
+            href: `/deliverables/${item.id}`,
+        }));
+    const view = (id: number) => {
+        const index = viewerItems.findIndex((item) => item.key === id);
+        setViewing(index === -1 ? null : index);
+    };
+
     return (
         <div className="space-y-6">
             <Head title="Creative board" />
@@ -123,7 +146,7 @@ export default function DeliverableBoard({ columns, rejected, counts }: BoardPro
                     <EmptyState
                         icon={Clapperboard}
                         title="No creative work yet"
-                        description="Commission posters and reels from an interview or a published article."
+                        description="Request posters and reels from an interview or a published article."
                     />
                 </Card>
             ) : (
@@ -183,15 +206,17 @@ export default function DeliverableBoard({ columns, rejected, counts }: BoardPro
                         </p>
                     </div>
 
-                    {sentBack.length > 0 && <SentBack items={sentBack} />}
+                    {sentBack.length > 0 && <SentBack items={sentBack} onView={view} />}
 
-                    <div className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                         {lanes.map((lane) => (
-                            <Lane key={lane.stage} stage={lane.stage} label={lane.label} items={lane.items} />
+                            <Lane key={lane.stage} stage={lane.stage} label={lane.label} items={lane.items} onView={view} />
                         ))}
                     </div>
                 </>
             )}
+
+            <MediaViewer items={viewerItems} index={viewing} onIndexChange={setViewing} onClose={() => setViewing(null)} />
         </div>
     );
 }
@@ -308,15 +333,16 @@ function Segmented({
  *
  * A rejected deliverable is work in somebody's hands, not a resting place —
  * a lane of its own would let things sit there looking filed (see
- * DeliverableStage::boardColumns()). A slim strip keeps it unmissable without
- * pushing the board half a screen down.
+ * DeliverableStage::boardColumns()). A strip above keeps it unmissable.
  */
-function SentBack({ items }: { items: DeliverableRow[] }) {
+function SentBack({ items, onView }: { items: DeliverableRow[]; onView: (id: number) => void }) {
     return (
-        <section className="rounded-xl border border-destructive/20 bg-destructive/[0.03] p-3" aria-label="Sent back">
+        <section className="rounded-2xl border border-destructive/20 bg-destructive/[0.03] p-3" aria-label="Sent back">
             <header className="flex items-center gap-2 px-1 pb-3">
-                <AlertTriangle className="size-4 text-destructive" aria-hidden="true" />
-                <h2 className="text-sm font-medium">Sent back for changes</h2>
+                <span className="flex size-7 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+                    <AlertTriangle className="size-4" aria-hidden="true" />
+                </span>
+                <h2 className="text-sm font-semibold">Sent back for changes</h2>
                 <Pill tone="danger">{items.length}</Pill>
                 <p className="ml-auto hidden text-xs text-muted-foreground sm:block">
                     Fix and resubmit from the deliverable page.
@@ -324,9 +350,9 @@ function SentBack({ items }: { items: DeliverableRow[] }) {
             </header>
 
             {/* The same grid as the lanes, so a sent-back card lines up with them. */}
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {items.map((item) => (
-                    <DeliverableCard key={item.id} deliverable={item} />
+                    <DeliverableCard key={item.id} deliverable={item} onView={() => onView(item.id)} />
                 ))}
             </div>
         </section>
@@ -335,102 +361,190 @@ function SentBack({ items }: { items: DeliverableRow[] }) {
 
 /* ─── Lanes and cards ───────────────────────────────────────────────────── */
 
-function Lane({ stage, label, items }: { stage: string; label: string; items: DeliverableRow[] }) {
+function Lane({
+    stage,
+    label,
+    items,
+    onView,
+}: {
+    stage: string;
+    label: string;
+    items: DeliverableRow[];
+    onView: (id: number) => void;
+}) {
     const meta = stageMeta('deliverable', stage);
 
     return (
-        <section className="flex min-w-0 flex-col rounded-xl border border-border bg-muted/60 p-2" aria-label={label}>
-            <header className="flex items-center gap-2 px-2 pb-2 pt-1">
+        <section className="flex min-w-0 flex-col gap-2.5 rounded-2xl bg-muted/60 p-2.5 ring-1 ring-inset ring-border/70" aria-label={label}>
+            <header className="flex items-center gap-2 px-1.5 pt-0.5">
                 <span className={cn('size-2 shrink-0 rounded-full', meta.dot)} aria-hidden="true" />
-                <h2 className="truncate text-sm font-medium">{label}</h2>
-                <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border bg-card px-1.5 text-xs font-medium text-muted-foreground tabular">
+                <h2 className="truncate text-sm font-semibold">{label}</h2>
+                <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-card px-1.5 text-xs font-medium text-muted-foreground shadow-xs tabular">
                     {items.length}
                 </span>
             </header>
 
-            <div className="flex flex-col gap-2">
-                {items.length === 0 ? (
-                    <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
-                        Nothing here
-                    </p>
-                ) : (
-                    items.map((item) => <DeliverableCard key={item.id} deliverable={item} />)
-                )}
-            </div>
+            {items.length === 0 ? (
+                <div className="flex flex-col items-center gap-1.5 rounded-xl border border-dashed border-border px-3 py-8 text-center">
+                    <Inbox className="size-5 text-muted-foreground/60" aria-hidden="true" />
+                    <p className="text-xs text-muted-foreground">Nothing here</p>
+                </div>
+            ) : (
+                items.map((item) => <DeliverableCard key={item.id} deliverable={item} onView={() => onView(item.id)} />)
+            )}
         </section>
     );
 }
 
-export function DeliverableCard({ deliverable }: { deliverable: DeliverableRow }) {
-    const Icon = deliverable.is_video ? Film : ImageIcon;
+/**
+ * One piece of work, picture first.
+ *
+ * The picture opens the viewer; everything else on the card opens the
+ * deliverable. The title's link is stretched over the whole card (the
+ * `after:` overlay) instead of wrapping it, because the card also holds other
+ * links — the download and the live post — and links cannot nest.
+ */
+function DeliverableCard({ deliverable, onView }: { deliverable: DeliverableRow; onView: () => void }) {
+    const { media } = deliverable;
     const when = deliverableTiming(deliverable);
     const WhenIcon = when.icon;
+    const KindIcon = deliverable.is_video ? Film : ImageIcon;
+    const title = deliverable.title || deliverable.kind_label;
+    const emptyLabel = deliverable.stage === 'pending' ? 'Not started' : 'No upload yet';
+    const hasPicture =
+        media?.type === 'image' || media?.type === 'video' || Boolean(media?.thumbnail_url ?? deliverable.social_thumbnail);
+
+    const overlays = (
+        <>
+            {hasPicture && (
+                <span className="pointer-events-none absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-black/45 to-transparent" />
+            )}
+            <span className="pointer-events-none absolute left-2 top-2 inline-flex h-6 items-center gap-1 rounded-full bg-black/55 px-2 text-[11px] font-medium text-white backdrop-blur-sm">
+                <KindIcon className="size-3" aria-hidden="true" />
+                {deliverable.kind_label}
+                {deliverable.slot_number > 1 && <span className="text-white/70">{deliverable.slot_number}</span>}
+            </span>
+            {media && (
+                <span className="pointer-events-none absolute right-2 top-2 inline-flex h-6 items-center rounded-full bg-black/55 px-2 text-[11px] font-semibold text-white backdrop-blur-sm tabular">
+                    v{media.version}
+                </span>
+            )}
+            {media?.duration_seconds ? (
+                <span className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/65 px-1.5 py-0.5 text-[11px] font-medium text-white tabular">
+                    {formatDuration(media.duration_seconds)}
+                </span>
+            ) : null}
+        </>
+    );
 
     return (
-        <Link
-            href={`/deliverables/${deliverable.id}`}
-            className="group block rounded-lg border border-border bg-card p-3 shadow-xs transition-[border-color,box-shadow] hover:border-primary/40 hover:shadow-card-hover"
-        >
-            <div className="flex items-center gap-2">
-                <span
-                    className={cn(
-                        'inline-flex size-7 shrink-0 items-center justify-center rounded-md',
-                        deliverable.is_video ? 'bg-stage-in-progress/10 text-stage-in-progress' : 'bg-primary/10 text-primary',
-                    )}
-                    aria-hidden="true"
-                >
-                    <Icon className="size-4" />
-                </span>
+        <article className="group/card relative flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xs transition-[border-color,box-shadow,transform] hover:-translate-y-px hover:border-primary/30 hover:shadow-card-hover">
+            <div className="relative">
+                {media ? (
+                    <button
+                        type="button"
+                        onClick={onView}
+                        className="group/thumb relative z-10 block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                        aria-label={`View ${title}, version ${media.version}`}
+                    >
+                        <MediaThumb
+                            media={media}
+                            fallbackThumbnail={deliverable.social_thumbnail}
+                            isVideo={deliverable.is_video}
+                            emptyLabel={emptyLabel}
+                            className="aspect-[4/3]"
+                        >
+                            {overlays}
+                            <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover/thumb:bg-black/25 group-hover/thumb:opacity-100">
+                                {media.type !== 'video' && (
+                                    <span className="inline-flex h-8 items-center gap-1.5 rounded-full bg-white px-3 text-xs font-semibold text-black shadow">
+                                        <Eye className="size-3.5" aria-hidden="true" />
+                                        View
+                                    </span>
+                                )}
+                            </span>
+                        </MediaThumb>
+                    </button>
+                ) : (
+                    <MediaThumb
+                        media={null}
+                        fallbackThumbnail={deliverable.social_thumbnail}
+                        isVideo={deliverable.is_video}
+                        emptyLabel={emptyLabel}
+                        className="aspect-[4/3]"
+                    >
+                        {overlays}
+                    </MediaThumb>
+                )}
 
-                <p className="min-w-0 flex-1 truncate text-sm font-medium group-hover:text-primary">
-                    {deliverable.title || deliverable.kind_label}
-                    {deliverable.slot_number > 1 && <span className="text-muted-foreground"> · {deliverable.slot_number}</span>}
+                {media && (
+                    <a
+                        href={media.download_url}
+                        {...(media.type === 'link'
+                            ? { target: '_blank', rel: 'noreferrer' }
+                            : { download: media.filename ?? true })}
+                        className="absolute bottom-2 right-2 z-20 inline-flex size-8 items-center justify-center rounded-full bg-white/95 text-foreground opacity-0 shadow transition hover:bg-white hover:text-primary focus-visible:opacity-100 group-hover/card:opacity-100 [@media(hover:none)]:opacity-100"
+                        aria-label={media.type === 'link' ? 'Open the linked file' : `Download version ${media.version}`}
+                        title={media.type === 'link' ? 'Open link' : 'Download'}
+                    >
+                        {media.type === 'link' ? <ExternalLink className="size-3.5" /> : <Download className="size-3.5" />}
+                    </a>
+                )}
+            </div>
+
+            <div className="flex flex-1 flex-col gap-1.5 p-3">
+                <div className="flex items-start gap-2">
+                    <Link
+                        href={`/deliverables/${deliverable.id}`}
+                        className="min-w-0 flex-1 truncate text-sm font-semibold after:absolute after:inset-0 after:content-[''] group-hover/card:text-primary"
+                    >
+                        {title}
+                    </Link>
+                    {deliverable.priority === 'high' && <Pill tone="danger">High</Pill>}
+                </div>
+
+                <p className="line-clamp-2 text-xs leading-4 text-muted-foreground">
+                    <span className="font-medium text-foreground/70">
+                        {deliverable.parent_kind === 'interview' ? 'Interview' : 'Article'}
+                    </span>{' '}
+                    · {deliverable.parent_label}
                 </p>
 
-                {deliverable.priority === 'high' && <Pill tone="danger">High</Pill>}
-            </div>
+                <p className="text-[11px] text-muted-foreground tabular">{deliverable.code}</p>
 
-            <p className="mt-2 line-clamp-2 text-xs leading-4 text-muted-foreground">
-                <span className="font-medium text-foreground/70">
-                    {deliverable.parent_kind === 'interview' ? 'Interview' : 'Article'}
-                </span>{' '}
-                · {deliverable.parent_label}
-            </p>
+                <div className="mt-auto flex items-center gap-1.5 pt-2">
+                    <Pill tone={when.tone} className="min-w-0 shrink">
+                        <WhenIcon className="size-3 shrink-0" aria-hidden="true" />
+                        <span className="truncate">{when.label}</span>
+                    </Pill>
 
-            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-                <span className="tabular">{deliverable.code}</span>
-                {deliverable.title && <span>· {deliverable.kind_label}</span>}
-                {deliverable.file_count > 0 && (
-                    <span className="rounded border border-border px-1 font-medium tabular">v{deliverable.current_version}</span>
-                )}
-            </div>
+                    {/* Published with no link recorded is worth flagging: nobody can find the post again. */}
+                    {deliverable.stage === 'published' && !deliverable.has_social_link && <Pill tone="warning">No link</Pill>}
 
-            <div className="mt-3 flex items-center gap-2 border-t border-border pt-3">
-                {/* Allowed to shrink and truncate, so the avatar never leaves the card. */}
-                <Pill tone={when.tone} className="min-w-0 shrink">
-                    <WhenIcon className="size-3 shrink-0" aria-hidden="true" />
-                    <span className="truncate">{when.label}</span>
-                </Pill>
-
-                {/* Published with no link recorded is worth flagging: nobody can find the post again. */}
-                {deliverable.stage === 'published' && !deliverable.has_social_link && <Pill tone="warning">No link</Pill>}
-
-                {deliverable.social_url && (
-                    <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-success">
-                        <ExternalLink className="size-3" aria-hidden="true" />
-                        Live
-                    </span>
-                )}
-
-                <span className="ml-auto shrink-0">
-                    {deliverable.assignee ? (
-                        <Avatar name={deliverable.assignee.name} size="sm" className="size-6 text-[10px]" />
-                    ) : (
-                        <Pill tone="warning">Unassigned</Pill>
+                    {deliverable.social_url && (
+                        <a
+                            href={deliverable.social_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="relative z-10 inline-flex shrink-0 items-center gap-0.5 rounded-full px-1 text-[11px] font-medium text-success hover:underline"
+                        >
+                            <ExternalLink className="size-3" aria-hidden="true" />
+                            Live
+                        </a>
                     )}
-                </span>
+
+                    <span className="ml-auto shrink-0">
+                        {deliverable.assignee ? (
+                            <span title={deliverable.assignee.name}>
+                                <Avatar name={deliverable.assignee.name} size="sm" className="size-6 text-[10px]" />
+                            </span>
+                        ) : (
+                            <Pill tone="warning">Unassigned</Pill>
+                        )}
+                    </span>
+                </div>
             </div>
-        </Link>
+        </article>
     );
 }
 

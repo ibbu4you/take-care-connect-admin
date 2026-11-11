@@ -5,7 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\Article;
 use App\Models\Category;
 use App\Models\User;
+use App\Rules\ActiveMember;
+use App\Rules\PublicUrl;
 use App\Services\StageMachine;
+use App\Support\ArticleReview;
 use App\Support\Notifier;
 use App\Support\Roles;
 use App\Support\Scope;
@@ -19,7 +22,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ArticleController extends Controller
 {
@@ -155,7 +157,10 @@ class ArticleController extends Controller
                         ->values(),
                 ] : null,
 
-                'assets' => $article->assets->map(fn ($asset) => [
+                // Newest first: the page labels the first draft "Latest", and the
+                // relation loads oldest first, so reviewers were opening the
+                // original instead of the current version.
+                'assets' => $article->assets->sortByDesc('id')->values()->map(fn ($asset) => [
                     'id' => $asset->id,
                     'kind' => $asset->kind,
                     'label' => $asset->label,
@@ -167,7 +172,6 @@ class ArticleController extends Controller
                     'uploader' => $asset->uploader?->name,
                     'created_at' => $asset->created_at?->toIso8601String(),
                 ]),
-
 
                 'history' => $article->stageEvents->map(fn ($event) => [
                     'id' => $event->id,
@@ -211,7 +215,12 @@ class ArticleController extends Controller
 
         DB::transaction(function () use ($request, $article, $validated) {
             $article->fill($validated);
+            $changed = $article->isDirty(['title', 'category_id', 'city', 'target_type']);
             $article->save();
+
+            if ($changed) {
+                ArticleReview::reopenIfChanged($article, $request->user(), $this->stages);
+            }
 
             /*
              | Saving is the moment work actually starts — or restarts after a
@@ -247,11 +256,20 @@ class ArticleController extends Controller
 
             $article->forceFill([
                 'submitted_at' => now(),
+                'submitted_by' => $request->user()->id,
                 // Cleared on submission: the previous round's notes have been
                 // acted on, and leaving them at the top of the editor makes the
                 // next reviewer think they are current.
                 'review_note' => null,
             ])->save();
+
+            // A writer who uploads the draft and submits without ever saving
+            // the form is still at "assigned"; the workflow goes through
+            // drafting, so take that step for them rather than refusing.
+            if ($article->stage === ArticleStage::Assigned) {
+                $this->startDrafting($article, $request->user());
+                $article->refresh();
+            }
 
             $this->stages->transition($article, ArticleStage::InternalReview, $request->user());
         });
@@ -337,9 +355,10 @@ class ArticleController extends Controller
         $this->authorize('publish', $article);
 
         $validated = $request->validate([
-            'published_url' => ['required', 'url', 'max:512'],
-            'published_at' => ['nullable', 'date'],
+            'published_url' => ['required', 'max:512', new PublicUrl([], 'Paste the live page address — starting with https://.')],
+            'published_at' => ['nullable', 'date', 'before_or_equal:now'],
         ], [
+            'published_at.before_or_equal' => 'It cannot have been published in the future.',
             'published_url.required' => 'Paste the live URL — that is what marks this finished.',
         ]);
 
@@ -372,14 +391,18 @@ class ArticleController extends Controller
 
         // The anchor whose interview this was should hear that it went live —
         // it is the only moment they find out their work reached the public.
-        Notifier::send(
-            [$article->writer, $article->interview?->anchor],
-            'published',
-            "{$article->code} is live",
-            $article->title,
-            "/articles/{$article->id}",
-            $request->user(),
-        );
+        $article->refresh();
+        $anchor = $article->interview?->anchor;
+
+        // Each to a page they can open: the writer to the article here, and
+        // the anchor — who usually cannot open articles in the admin — to the
+        // story itself on the website.
+        Notifier::send([$article->writer], 'published', "{$article->code} is live", $article->title, "/articles/{$article->id}", $request->user());
+
+        if ($anchor !== null && $anchor->isNot($article->writer)) {
+            $link = $anchor->can('view', $article) ? "/articles/{$article->id}" : $article->published_url;
+            Notifier::send([$anchor], 'published', "{$article->code} is live", $article->title, $link, $request->user());
+        }
 
         return back()->with('success', 'Published. Nice work.');
     }
@@ -389,14 +412,19 @@ class ArticleController extends Controller
         $this->authorize('assign', $article);
 
         $validated = $request->validate([
-            'writer_id' => ['required', 'integer', Rule::exists('users', 'id')],
+            'writer_id' => ['required', 'integer', ActiveMember::content()],
         ]);
 
-        $article->update(['writer_id' => $validated['writer_id']]);
+        DB::transaction(function () use ($article, $validated) {
+            $article->update(['writer_id' => $validated['writer_id']]);
+
+            // The interview's content owner is the same person; keeping the
+            // two apart left the new writer without the source material.
+            $article->interview?->update(['content_owner_id' => $validated['writer_id']]);
+        });
 
         return back()->with('success', 'Assigned.');
     }
-
 
     /**
      * Move the article to drafting, and the interview alongside it.

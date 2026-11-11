@@ -11,13 +11,16 @@ use App\Models\Interview;
 use App\Models\Project;
 use App\Models\SocialPost;
 use App\Models\User;
+use App\Rules\ActiveMember;
 use App\Services\CodeGenerator;
 use App\Services\HandoverService;
 use App\Services\StageMachine;
 use App\Support\Notifier;
 use App\Support\Roles;
 use App\Support\Scope;
+use App\Support\Workflow\ArticleStage;
 use App\Support\Workflow\DeliverableKind;
+use App\Support\Workflow\DeliverableStage;
 use App\Support\Workflow\InterviewKind;
 use App\Support\Workflow\InterviewStage;
 use App\Support\Workflow\ProjectStatus;
@@ -27,6 +30,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -110,7 +114,11 @@ class InterviewController extends Controller
             ->map(fn (Interview $interview) => $this->row($interview, $user));
 
         return Inertia::render('Interviews/MyQueue', [
-            'upcoming' => $mine->filter(fn (array $row) => $row['stage'] !== InterviewStage::Conducted->value)->values(),
+            // Still to happen — not "anything except conducted", which also
+            // counted handed-over, with-content and no-show interviews.
+            'upcoming' => $mine->filter(fn (array $row) => in_array($row['stage'], [
+                InterviewStage::Scheduled->value, InterviewStage::Rescheduled->value,
+            ], true))->values(),
             'toFinish' => $mine->filter(fn (array $row) => $row['stage'] === InterviewStage::Conducted->value)->values(),
         ]);
     }
@@ -261,6 +269,7 @@ class InterviewController extends Controller
             ],
 
             'writers' => $this->writerOptions(),
+            'anchors' => $this->anchorOptions(),
 
             // Everything the commission dialog needs, so creative work can be
             // ordered straight off the interview it comes from. For the two
@@ -290,6 +299,13 @@ class InterviewController extends Controller
                 'upload' => $request->user()->can('uploadAssets', $interview),
                 'deleteAsset' => $request->user()->can('deleteAsset', $interview),
                 'message' => $request->user()->can('schedule', $interview) || $request->user()->can('update', $interview),
+                'reschedule' => $request->user()->can('schedule', $interview)
+                    && in_array(InterviewStage::Rescheduled, $interview->allowedNextStages(), true),
+                // A social interview has no article to publish it, so it is
+                // marked published here once its posts are out.
+                'publish' => $request->user()->can('update', $interview)
+                    && $interview->stage === InterviewStage::Conducted
+                    && ! $interview->kind->requiresArticle(),
             ],
         ]);
     }
@@ -322,7 +338,9 @@ class InterviewController extends Controller
             ]));
 
             $interview->consent_to_publish = $request->boolean('consent_to_publish');
-            $interview->conducted_at = $request->date('conducted_at') ?? now();
+            // Editing the notes later keeps the time it happened. Falling back
+            // to "now" on every save moved the conducted date each time.
+            $interview->conducted_at = $request->date('conducted_at') ?? $interview->conducted_at ?? now();
             $interview->save();
 
             // Only move the stage if it has not already been moved — saving the
@@ -353,7 +371,7 @@ class InterviewController extends Controller
         $this->authorize('handover', $interview);
 
         $validated = $request->validate([
-            'content_owner_id' => ['nullable', 'integer', Rule::exists('users', 'id')],
+            'content_owner_id' => ['nullable', 'integer', ActiveMember::content()],
             'note' => ['nullable', 'string', 'max:1000'],
         ]);
 
@@ -372,10 +390,21 @@ class InterviewController extends Controller
         $this->authorize('reassign', $interview);
 
         $validated = $request->validate([
-            'assigned_to' => ['required', 'integer', Rule::exists('users', 'id')],
             'role' => ['required', Rule::in(['anchor', 'content', 'creative'])],
+            'assigned_to' => ['required', 'integer', match ($request->input('role')) {
+                'content' => ActiveMember::content(),
+                'creative' => ActiveMember::creative(),
+                default => ActiveMember::anchor(),
+            }],
             'brief' => ['nullable', 'string', 'max:1000'],
         ]);
+
+        // The byline of a published article is a public record.
+        if ($validated['role'] === 'content' && Article::where('interview_id', $interview->id)->where('stage', ArticleStage::Published->value)->exists()) {
+            throw ValidationException::withMessages([
+                'assigned_to' => 'The article is already published under its writer.',
+            ]);
+        }
 
         $this->handovers->assign(
             $interview,
@@ -398,38 +427,93 @@ class InterviewController extends Controller
             'reason' => ['required', 'string', 'max:255'],
         ]);
 
-        $interview->update(['cancelled_reason' => $validated['reason']]);
+        // The reason is saved only once the move has gone through: a refused
+        // cancel used to leave a reason on an interview that was still on.
+        DB::transaction(function () use ($interview, $validated, $request) {
+            $this->stages->transition(
+                $interview,
+                InterviewStage::from($validated['stage']),
+                $request->user(),
+                $validated['reason'],
+                $interview->allowedNextStages(),
+            );
 
-        $this->stages->transition(
-            $interview,
-            InterviewStage::from($validated['stage']),
-            $request->user(),
-            $validated['reason'],
-            $interview->allowedNextStages(),
-        );
+            $interview->update(['cancelled_reason' => $validated['reason']]);
+
+            // Pieces nobody has started yet go with it, rather than sitting in
+            // Pending for ever. Anything with work uploaded is left for a person
+            // to decide about.
+            $interview->deliverables()
+                ->where('stage', DeliverableStage::Pending->value)
+                ->whereDoesntHave('files')
+                ->get()
+                ->each->delete();
+        });
 
         return back()->with('success', 'Updated.');
     }
 
-    /** Any other legal move — rescheduled, in_content, published. */
+    /**
+     * The two moves that have no action of their own.
+     *
+     *   rescheduled  a new date, from scheduled, rescheduled or no-show
+     *   published    a social interview, which has no article to publish it
+     *
+     * Everything else has a dedicated route that carries its own rules —
+     * conduct needs the date it happened, handover needs the transcript and a
+     * writer, cancel needs the permission and a reason, and "with content" and
+     * a business interview's "published" follow the article. Accepting them
+     * here as well let any of those rules be stepped around.
+     */
     public function moveStage(Request $request, Interview $interview): RedirectResponse
     {
-        $this->authorize('update', $interview);
-
-        $validated = $request->validate([
-            'stage' => ['required', Rule::in(InterviewStage::values())],
-            'note' => ['nullable', 'string', 'max:500'],
-        ]);
-
-        $this->stages->transition(
+        // Rescheduling is the booking manager's job; publishing is the team's.
+        $this->authorize(
+            $request->input('stage') === InterviewStage::Rescheduled->value ? 'schedule' : 'update',
             $interview,
-            InterviewStage::from($validated['stage']),
-            $request->user(),
-            $validated['note'] ?? null,
-            $interview->allowedNextStages(),
         );
 
-        return back()->with('success', 'Stage updated.');
+        $validated = $request->validate([
+            'stage' => ['required', Rule::in([InterviewStage::Rescheduled->value, InterviewStage::Published->value])],
+            'scheduled_at' => [
+                Rule::requiredIf($request->input('stage') === InterviewStage::Rescheduled->value),
+                'nullable', 'date', 'after:now',
+            ],
+            'note' => ['nullable', 'string', 'max:500'],
+        ], [
+            'stage.in' => 'That move has its own button — use it, so its checks run.',
+            'scheduled_at.required' => 'Pick the new date and time.',
+            'scheduled_at.after' => 'The new date has to be in the future.',
+        ]);
+
+        $target = InterviewStage::from($validated['stage']);
+
+        if ($target === InterviewStage::Published && $interview->kind->requiresArticle()) {
+            throw ValidationException::withMessages([
+                'stage' => 'This interview is published when its article is.',
+            ]);
+        }
+
+        DB::transaction(function () use ($interview, $target, $validated, $request) {
+            $this->stages->transition(
+                $interview,
+                $target,
+                $request->user(),
+                $validated['note'] ?? null,
+                $interview->allowedNextStages(),
+            );
+
+            if ($target === InterviewStage::Rescheduled) {
+                // A new date starts clean: last time's no-show reason belongs
+                // to last time.
+                $interview->update([
+                    'scheduled_at' => $validated['scheduled_at'],
+                    'cancelled_reason' => null,
+                ]);
+            }
+        });
+
+        return back()->with('success', $target === InterviewStage::Rescheduled ? 'Rescheduled.' : 'Marked published.');
     }
 
     /**

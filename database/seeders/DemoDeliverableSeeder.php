@@ -25,6 +25,12 @@ class DemoDeliverableSeeder extends Seeder
 {
     public function run(CodeGenerator $codes, StageMachine $stages): void
     {
+        if (app()->environment('production')) {
+            $this->command?->error(static::class.' will not run in production — it creates demo data.');
+
+            return;
+        }
+
         $creative = User::role(Roles::CREATIVE)->first();
         $manager = User::role(Roles::RELATIONSHIP_MANAGER)->first();
         $anchor = User::role(Roles::ANCHOR)->first();
@@ -103,7 +109,7 @@ class DemoDeliverableSeeder extends Seeder
             'brief' => 'Pull the strongest thirty seconds. Keep the lower third clean.',
         ]);
 
-        $stages->recordCreation($deliverable, $anchor, "Commissioned from {$parent->code}");
+        $stages->recordCreation($deliverable, $anchor, "Requested from {$parent->code}");
 
         if ($target === DeliverableStage::Pending) {
             return;

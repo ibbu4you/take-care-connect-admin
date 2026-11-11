@@ -6,8 +6,8 @@ use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 
 /**
@@ -60,7 +60,17 @@ class PasswordCommand extends Command
             }
         }
 
-        $user->forceFill(['password' => Hash::make($password)])->save();
+        // A fresh remember token too: "remember me" cookies otherwise keep
+        // signing the old holder in after the password has changed.
+        $user->forceFill([
+            'password' => Hash::make($password),
+            'remember_token' => Str::random(60),
+        ])->save();
+
+        activity()
+            ->performedOn($user)
+            ->withProperties(['via' => 'console'])
+            ->log('password reset');
 
         /*
          | Log the reset out of every session.

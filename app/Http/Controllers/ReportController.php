@@ -134,7 +134,9 @@ class ReportController extends Controller
         return [
             'booked' => $booked->count(),
             'conducted' => $conducted->count(),
-            'cancelled' => $booked->whereIn('stage', ['cancelled', 'no_show'])->count(),
+            // The stage is an enum on the model; comparing it with strings
+            // matched nothing, so this always read 0.
+            'cancelled' => $booked->filter(fn ($interview) => $interview->stage->isAbandoned())->count(),
 
             'by_kind' => collect(InterviewKind::cases())
                 ->map(fn (InterviewKind $kind) => [
@@ -181,7 +183,7 @@ class ReportController extends Controller
             'published' => $published->count(),
             'open' => $open->count(),
             'overdue' => $open
-                ->filter(fn (Article $a) => $a->due_on !== null && $a->due_on->isPast())
+                ->filter(fn (Article $a) => $a->due_on !== null && $a->due_on->lt(today()))
                 ->count(),
 
             'by_stage' => collect(ArticleStage::cases())
@@ -279,7 +281,7 @@ class ReportController extends Controller
         $months = in_array($months, [1, 3, 6, 12], true) ? $months : 3;
 
         return [
-            now()->subMonths($months - 1)->startOfMonth(),
+            now()->startOfMonth()->subMonthsNoOverflow($months - 1),
             now()->endOfMonth(),
             $months,
         ];

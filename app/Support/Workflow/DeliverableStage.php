@@ -49,10 +49,12 @@ enum DeliverableStage: string implements Stage
         return match ($this) {
             self::Pending => [self::InProgress],
             self::InProgress => [self::Review],
-            self::Review => [self::Approved, self::Rejected],
+            self::Review => [self::Approved, self::Rejected, self::InProgress],
             self::Rejected => [self::InProgress, self::Review],
-            self::Approved => [self::Scheduled, self::Published],
-            self::Scheduled => [self::Published],
+            // Back to in-progress when what was approved is changed: the
+            // approval was of the old caption, not the new one.
+            self::Approved => [self::Scheduled, self::Published, self::InProgress],
+            self::Scheduled => [self::Published, self::InProgress],
             self::Published => [],
         };
     }

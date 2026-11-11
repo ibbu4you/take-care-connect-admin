@@ -39,7 +39,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     const nextId = useRef(1);
     const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
 
+    const visible = useRef<Toast[]>([]);
+
     const dismiss = useCallback((id: number) => {
+        visible.current = visible.current.filter((toast) => toast.id !== id);
         setToasts((current) => current.filter((toast) => toast.id !== id));
 
         const timer = timers.current.get(id);
@@ -58,25 +61,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
              | otherwise stack identical toasts on top of each other and read as
              | though something had gone wrong twice.
              */
-            let created: number | null = null;
-
-            setToasts((current) => {
-                if (current.some((toast) => toast.message === message && toast.tone === tone)) {
-                    return current;
-                }
-
-                created = nextId.current++;
-
-                return [...current, { id: created, message, tone }];
-            });
-
-            if (created !== null) {
-                const id = created;
-                timers.current.set(
-                    id,
-                    setTimeout(() => dismiss(id), DISMISS_AFTER_MS),
-                );
+            // Checked against what is on screen right now, and the id and
+            // timer made here rather than inside the state updater — React may
+            // run that later, which left a toast with no timer, on screen for
+            // good.
+            if (visible.current.some((toast) => toast.message === message && toast.tone === tone)) {
+                return;
             }
+
+            const id = nextId.current++;
+            visible.current = [...visible.current, { id, message, tone }];
+
+            setToasts((current) => [...current, { id, message, tone }]);
+            timers.current.set(
+                id,
+                setTimeout(() => dismiss(id), DISMISS_AFTER_MS),
+            );
         },
         [dismiss],
     );

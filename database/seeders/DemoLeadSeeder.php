@@ -27,6 +27,12 @@ class DemoLeadSeeder extends Seeder
 {
     public function run(CodeGenerator $codes): void
     {
+        if (app()->environment('production')) {
+            $this->command?->error(static::class.' will not run in production — it creates demo data.');
+
+            return;
+        }
+
         $manager = User::role(Roles::RELATIONSHIP_MANAGER)->first();
 
         // Optional: the last two leads belong to the telecaller when there is

@@ -57,7 +57,9 @@ class LeadPolicy
      */
     public function convert(User $actor, Lead $lead): bool
     {
-        if ($lead->status->isFinal()) {
+        // Either sign of an earlier conversion is enough — the status alone
+        // could once be edited back, which reopened the door to a second client.
+        if ($lead->status->isFinal() || $lead->converted_client_id !== null) {
             return false;
         }
 

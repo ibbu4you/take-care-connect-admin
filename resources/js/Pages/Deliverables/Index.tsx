@@ -139,7 +139,7 @@ export default function DeliverablesIndex({ deliverables, filters, kinds, stages
                         <EmptyState
                             icon={Clapperboard}
                             title={filtering ? 'No deliverables match those filters' : 'No deliverables yet'}
-                            description="Work is commissioned from an interview or a published article."
+                            description="Work is requested from an interview or a published article."
                         />
                     </div>
                 ) : (

@@ -135,7 +135,7 @@ final class Roles
             ...Permissions::only('interviews', [
                 'view', 'update', 'conduct', 'handover', 'reassign',
             ]),
-            ...Permissions::only('assets', ['upload']),
+            ...Permissions::only('assets', ['upload', 'delete']),
             ...Permissions::only('articles', ['view', 'assign']),
             ...Permissions::only('deliverables', ['view', 'create', 'assign']),
             ...Permissions::only('social', ['links.record']),
@@ -168,7 +168,7 @@ final class Roles
             // file hangs off. Content already sees every interview, so they
             // already reach every handover document — granting the blanket
             // string as well would only widen access beyond that.
-            ...Permissions::only('assets', ['upload']),
+            ...Permissions::only('assets', ['upload', 'delete']),
             ...Permissions::only('deliverables', [
                 'view', 'view.all', 'create', 'assign', 'approve',
             ]),
@@ -202,7 +202,7 @@ final class Roles
             // is scoped to interviews they are the creative owner of, so
             // `assets.view.all` would have handed them every business handover
             // document in the system to solve a problem they do not have.
-            ...Permissions::only('assets', ['upload']),
+            ...Permissions::only('assets', ['upload', 'delete']),
             ...Permissions::only('social', ['links.record']),
             ...Permissions::only('comments', ['create']),
             ...Permissions::only('reports', ['view']),

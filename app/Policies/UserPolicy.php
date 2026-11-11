@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Models\User;
 use App\Support\Roles;
+use Spatie\Permission\Models\Role;
 
 /**
  * Who may administer accounts.
@@ -121,15 +122,37 @@ class UserPolicy
     /**
      * Handing out a role.
      *
-     * Admin is the top role and confers everything, so granting it is exactly
-     * as consequential as `users.update` itself — which is why holding that is
-     * the requirement rather than already being an Admin. Somebody trusted to
-     * edit accounts is trusted to say who administers them.
+     * Nobody can give a role that does more than they can do themselves. With
+     * `users.update` alone being enough, an account editor could make anybody
+     * — themselves included — an Admin. The comparison is against what the
+     * role grants *now* (the Roles page can change it), and against what the
+     * actor holds after their own revocations.
      */
     public function assignRole(User $actor, string $role): bool
     {
-        return $actor->can('users.update');
+        if (! $actor->can('users.update')) {
+            return false;
+        }
+
+        $grants = Role::where('name', $role)->first()?->permissions->pluck('name') ?? collect();
+
+        return $grants->every(fn (string $permission) => $actor->can($permission));
     }
+
+    /**
+     * The permissions without which nobody can administer the system.
+     *
+     * Losing any one of them from the last Admin — by demotion, revocation,
+     * deactivation or by editing the Admin role itself — leaves nobody able to
+     * give it back short of editing the database.
+     */
+    public const ADMIN_ESSENTIALS = [
+        'users.view',
+        'users.update',
+        'users.permissions.manage',
+        'roles.view',
+        'roles.update',
+    ];
 
     /**
      * The only active Admin left.

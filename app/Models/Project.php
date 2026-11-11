@@ -98,7 +98,7 @@ class Project extends Model
     {
         return $this->status->isActive()
             && $this->due_on !== null
-            && $this->due_on->isPast();
+            && $this->due_on->lt(today());
     }
 
     /**

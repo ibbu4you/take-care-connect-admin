@@ -51,9 +51,15 @@ class AppServiceProvider extends ServiceProvider
      */
     private function configureRateLimiting(): void
     {
+        // Answered as a form error, like the request's own lockout — a bare
+        // 429 page left somebody mistyping their password with no way back.
+        $lockedOut = fn () => back()
+            ->withErrors(['email' => 'Too many sign-in attempts. Wait a minute and try again.'])
+            ->onlyInput('email');
+
         RateLimiter::for('login', fn (Request $request) => [
-            Limit::perMinute(30)->by($request->ip()),
-            Limit::perMinute(5)->by(mb_strtolower((string) $request->input('email')).'|'.$request->ip()),
+            Limit::perMinute(30)->by($request->ip())->response($lockedOut),
+            Limit::perMinute(5)->by(mb_strtolower((string) $request->input('email')).'|'.$request->ip())->response($lockedOut),
         ]);
 
         RateLimiter::for('uploads', fn (Request $request) => Limit::perMinute(30)

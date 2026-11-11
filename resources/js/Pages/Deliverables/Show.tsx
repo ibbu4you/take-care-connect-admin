@@ -3,6 +3,7 @@ import {
     AlertTriangle,
     ArrowLeft,
     CheckCircle2,
+    Download,
     ExternalLink,
     FileText,
     Film,
@@ -25,6 +26,7 @@ import { Checkbox } from '@/Components/ui/checkbox';
 import { ConfirmDialog, Dialog } from '@/Components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/Components/ui/input';
 import { Avatar, EmptyState, SectionDivider } from '@/Components/ui/misc';
+import { MediaThumb, MediaViewer, type MediaInfo } from '@/Components/work/MediaViewer';
 import { adminLayout } from '@/Layouts/AdminLayout';
 import { bytes, dateTime, duration as formatDuration, relative, sentenceList } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -41,6 +43,7 @@ interface DeliverableFile {
     note: string | null;
     uploader: string | null;
     created_at: string | null;
+    media: MediaInfo;
 }
 
 interface SocialPostRow {
@@ -105,7 +108,7 @@ interface ShowProps {
     };
 }
 
-export default function DeliverableShow({ deliverable, platforms, can }: ShowProps) {
+export default function DeliverableShow({ deliverable, platforms, creatives, can }: ShowProps) {
     const [uploading, setUploading] = useState(false);
     const [rejecting, setRejecting] = useState(false);
     const [publishing, setPublishing] = useState(false);
@@ -247,10 +250,12 @@ export default function DeliverableShow({ deliverable, platforms, can }: ShowPro
                 </Card>
             )}
 
-            <div className="grid gap-6 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="space-y-6 lg:col-span-2">
                     <FilesCard
                         files={deliverable.files}
+                        isVideo={deliverable.is_video}
+                        title={deliverable.title || `${deliverable.kind_label} ${deliverable.slot_number}`}
                         canWork={can.work}
                         onUpload={() => setUploading(true)}
                         onRemove={setRemoveFile}
@@ -296,8 +301,16 @@ export default function DeliverableShow({ deliverable, platforms, can }: ShowPro
                         </CardHeader>
                         <CardContent className="space-y-3">
                             <PersonRow role="Making it" person={deliverable.assignee} />
-                            <PersonRow role="Commissioned" person={deliverable.assigner} />
+                            <PersonRow role="Requested by" person={deliverable.assigner} />
                             <PersonRow role="Approved" person={deliverable.approver} />
+
+                            {can.assign && (
+                                <AssignCreative
+                                    deliverableId={deliverable.id}
+                                    current={deliverable.assignee}
+                                    creatives={creatives}
+                                />
+                            )}
                         </CardContent>
                     </Card>
 
@@ -343,15 +356,27 @@ export default function DeliverableShow({ deliverable, platforms, can }: ShowPro
 
 function FilesCard({
     files,
+    isVideo,
+    title,
     canWork,
     onUpload,
     onRemove,
 }: {
     files: DeliverableFile[];
+    isVideo: boolean;
+    title: string;
     canWork: boolean;
     onUpload: () => void;
     onRemove: (file: DeliverableFile) => void;
 }) {
+    const [viewing, setViewing] = useState<number | null>(null);
+    const viewerItems = files.map((file, index) => ({
+        key: file.id,
+        media: file.media,
+        title,
+        subtitle: index === 0 ? 'Current version' : 'Earlier version',
+    }));
+
     return (
         <Card>
             <CardHeader>
@@ -379,15 +404,22 @@ function FilesCard({
                 <ul className="divide-y divide-border">
                     {files.map((file, index) => (
                         <li key={file.id} className="flex items-center gap-3 px-5 py-3">
-                            <span
+                            <button
+                                type="button"
+                                onClick={() => setViewing(index)}
                                 className={cn(
-                                    'inline-flex size-9 shrink-0 items-center justify-center rounded-control',
-                                    index === 0 ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
+                                    'shrink-0 overflow-hidden rounded-lg ring-1 ring-border transition hover:ring-2 hover:ring-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                                    index === 0 && 'ring-primary/40',
                                 )}
-                                aria-hidden="true"
+                                aria-label={`View version ${file.version}`}
                             >
-                                {file.is_link ? <Link2 className="size-4" /> : <Film className="size-4" />}
-                            </span>
+                                <MediaThumb
+                                    media={file.media}
+                                    isVideo={isVideo}
+                                    emptyLabel=""
+                                    className="h-14 w-20 [&_span.text-xs]:hidden [&_.size-10]:size-7"
+                                />
+                            </button>
 
                             <div className="min-w-0 flex-1">
                                 <a
@@ -416,6 +448,16 @@ function FilesCard({
                                 {file.note && <p className="truncate text-xs text-muted-foreground">{file.note}</p>}
                             </div>
 
+                            <a
+                                href={file.media.download_url}
+                                {...(file.is_link ? { target: '_blank', rel: 'noreferrer' } : { download: file.original_filename ?? true })}
+                                className="inline-flex size-9 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                aria-label={file.is_link ? `Open version ${file.version}` : `Download version ${file.version}`}
+                                title={file.is_link ? 'Open link' : 'Download'}
+                            >
+                                {file.is_link ? <ExternalLink className="size-4" /> : <Download className="size-4" />}
+                            </a>
+
                             {canWork && (
                                 <Button
                                     variant="ghost"
@@ -431,6 +473,8 @@ function FilesCard({
                     ))}
                 </ul>
             )}
+
+            <MediaViewer items={viewerItems} index={viewing} onIndexChange={setViewing} onClose={() => setViewing(null)} />
         </Card>
     );
 }
@@ -452,7 +496,7 @@ function CaptionCard({
     platforms: string[];
     readOnly: boolean;
 }) {
-    const { data, setData, patch, processing, isDirty } = useForm({
+    const { data, setData, patch, processing, isDirty, errors } = useForm({
         title: deliverable.title ?? '',
         brief: deliverable.brief ?? '',
         caption: deliverable.caption ?? '',
@@ -486,7 +530,7 @@ function CaptionCard({
 
             <CardContent>
                 <form onSubmit={submit} className="space-y-4">
-                    <Field label="Caption" htmlFor="caption" hint={`${data.caption.length}/2200 characters`}>
+                    <Field label="Caption" htmlFor="caption" hint={`${data.caption.length}/2200 characters`} error={errors.caption}>
                         <Textarea
                             id="caption"
                             value={data.caption}
@@ -497,7 +541,7 @@ function CaptionCard({
                         />
                     </Field>
 
-                    <Field label="Hashtags" htmlFor="hashtags">
+                    <Field label="Hashtags" htmlFor="hashtags" error={errors.hashtags}>
                         <Textarea
                             id="hashtags"
                             value={data.hashtags}
@@ -982,6 +1026,50 @@ function AddLinkDialog({
                 </Field>
             </div>
         </Dialog>
+    );
+}
+
+/** Give the piece to a creative, or to a different one. */
+function AssignCreative({
+    deliverableId,
+    current,
+    creatives,
+}: {
+    deliverableId: number;
+    current: { id: number; name: string } | null;
+    creatives: Array<{ id: number; name: string }>;
+}) {
+    const { data, setData, post, processing, errors, reset } = useForm({ assigned_to: '' });
+
+    return (
+        <form
+            className="flex items-end gap-2 border-t border-border pt-3"
+            onSubmit={(event) => {
+                event.preventDefault();
+                post(`/deliverables/${deliverableId}/assign`, { preserveScroll: true, onSuccess: () => reset() });
+            }}
+        >
+            <Field
+                label={current ? 'Give it to someone else' : 'Give it to'}
+                htmlFor="assign_creative"
+                error={errors.assigned_to}
+                className="min-w-0 flex-1"
+            >
+                <Select id="assign_creative" value={data.assigned_to} onChange={(event) => setData('assigned_to', event.target.value)}>
+                    <option value="">Choose…</option>
+                    {creatives
+                        .filter((person) => person.id !== current?.id)
+                        .map((person) => (
+                            <option key={person.id} value={person.id}>
+                                {person.name}
+                            </option>
+                        ))}
+                </Select>
+            </Field>
+            <Button type="submit" variant="outline" loading={processing} disabled={data.assigned_to === ''}>
+                Assign
+            </Button>
+        </form>
     );
 }
 

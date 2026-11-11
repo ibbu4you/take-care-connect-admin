@@ -23,8 +23,12 @@ class TwoFactorController extends Controller
     public function __construct(private readonly TwoFactorAuthenticator $authenticator) {}
 
     /** Step one of enrolment: show a secret and its QR code. */
-    public function setup(Request $request): Response
+    public function setup(Request $request): Response|RedirectResponse
     {
+        if ($blocked = $this->mustPassChallengeFirst($request)) {
+            return $blocked;
+        }
+
         $user = $request->user();
 
         /*
@@ -50,7 +54,18 @@ class TwoFactorController extends Controller
     /** Step two: verify a code, then store the secret and the recovery codes. */
     public function confirm(Request $request): RedirectResponse
     {
-        $request->validate(['code' => ['required', 'string']]);
+        if ($blocked = $this->mustPassChallengeFirst($request)) {
+            return $blocked;
+        }
+
+        // Replacing a working second factor is as sensitive as removing it, so
+        // it costs the same: the current password, not just an open session.
+        $request->validate([
+            'code' => ['required', 'string'],
+            'password' => $request->user()->hasTwoFactorEnabled()
+                ? ['required', 'current_password']
+                : ['nullable'],
+        ]);
 
         $secret = $request->session()->get('two_factor_pending_secret');
 
@@ -95,6 +110,11 @@ class TwoFactorController extends Controller
         $request->validate(['code' => ['required', 'string']]);
 
         $user = $request->user();
+
+        // Nothing to verify against — not an error, just nowhere to be.
+        if (! $user->hasTwoFactorEnabled()) {
+            return redirect()->intended('/dashboard');
+        }
         $code = $request->string('code')->toString();
 
         if ($this->authenticator->verify((string) $user->two_factor_secret, $code)) {
@@ -135,6 +155,10 @@ class TwoFactorController extends Controller
      */
     public function destroy(Request $request): RedirectResponse
     {
+        if ($blocked = $this->mustPassChallengeFirst($request)) {
+            return $blocked;
+        }
+
         $request->validate(['password' => ['required', 'current_password']]);
 
         $user = $request->user();
@@ -148,6 +172,24 @@ class TwoFactorController extends Controller
         $request->session()->forget('two_factor_passed');
 
         return back()->with('success', 'Two-factor authentication is off.');
+    }
+
+    /**
+     * Enrolment and removal are for somebody already past the second factor.
+     *
+     * These routes sit outside the `2fa` middleware so a first-time enrolment
+     * can reach them — but for an account that already has a second factor, a
+     * session holding only the password must not be able to swap in a new
+     * secret or switch it off. Either would make the password alone enough,
+     * which is exactly what the second factor exists to prevent.
+     */
+    private function mustPassChallengeFirst(Request $request): ?RedirectResponse
+    {
+        if ($request->user()->hasTwoFactorEnabled() && ! $request->session()->get('two_factor_passed')) {
+            return redirect()->route('two-factor.challenge');
+        }
+
+        return null;
     }
 
     /** Sign out from the challenge screen, for somebody who cannot get past it. */

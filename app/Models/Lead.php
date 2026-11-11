@@ -76,7 +76,7 @@ class Lead extends Model
     {
         return $this->status->isOpen()
             && $this->next_action_on !== null
-            && $this->next_action_on->isPast();
+            && $this->next_action_on->lt(today());
     }
 
     /** Days since anybody spoke to them. Null when nobody ever has. */

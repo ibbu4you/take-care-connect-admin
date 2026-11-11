@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Interview;
 use App\Models\InterviewAsset;
+use App\Rules\PublicUrl;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -39,9 +40,20 @@ class InterviewAssetController extends Controller
         $validated = $request->validate([
             'kind' => ['required', Rule::in(array_unique([...self::UPLOAD_KINDS, ...self::LINK_KINDS]))],
             'label' => ['nullable', 'string', 'max:160'],
-            'file' => ['required_without:url', 'nullable', 'file', 'max:51200'],
-            'url' => ['required_without:file', 'nullable', 'url', 'max:1000'],
+            // What each kind may be. Checked against the file's contents, so a
+            // script renamed to .jpg is not a photo.
+            'file' => ['required_without:url', 'nullable', 'file', 'max:51200', match ($request->input('kind')) {
+                'photo' => 'mimes:jpg,jpeg,png,gif,webp,heic',
+                'recording' => 'mimes:mp3,m4a,wav,ogg,aac,mp4,mov,webm',
+                default => 'mimes:docx,doc,pdf,odt,rtf,txt',
+            }],
+            'url' => ['required_without:file', 'nullable', 'max:1000', new PublicUrl([], 'Paste a link that starts with https://.')],
         ], [
+            'file.mimes' => match ($request->input('kind')) {
+                'photo' => 'Upload a photo — JPG, PNG, GIF, WebP or HEIC.',
+                'recording' => 'Upload audio or video — MP3, M4A, WAV, MP4, MOV or WebM — or paste the Drive link.',
+                default => 'Upload a document — Word, PDF, ODT, RTF or plain text.',
+            },
             'file.required_without' => 'Attach a file or paste a link.',
             'url.required_without' => 'Attach a file or paste a link.',
             'file.max' => 'That file is over 50 MB. Upload it to Drive and paste the link instead.',

@@ -38,17 +38,37 @@ class RolePermissionSeeder extends Seeder
         // below and every role comes out empty.
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
+        $known = Permission::where('guard_name', 'web')->pluck('name')->all();
+        $new = array_values(array_diff(Permissions::all(), $known));
+
         foreach (Permissions::all() as $name) {
             Permission::findOrCreate($name, 'web');
         }
 
         $created = 0;
+        $delivered = 0;
 
         foreach (Roles::definitions() as $role => $permissions) {
             $existing = Role::where('name', $role)->where('guard_name', 'web')->first();
 
             if ($existing !== null) {
-                continue;   // Already configured — possibly deliberately. Leave it.
+                /*
+                 | Already configured — possibly deliberately — so nothing is
+                 | taken away and nothing an admin removed comes back.
+                 |
+                 | But a permission that did not exist until this release cannot
+                 | have been removed by anybody, and leaving it out meant a new
+                 | feature reached no one, Admin included. Those are given to
+                 | the roles whose defaults include them.
+                 */
+                $arriving = array_values(array_intersect($permissions, $new));
+
+                if ($arriving !== []) {
+                    $existing->givePermissionTo($arriving);
+                    $delivered += count($arriving);
+                }
+
+                continue;
             }
 
             Role::create(['name' => $role, 'guard_name' => 'web'])->syncPermissions($permissions);
@@ -56,6 +76,10 @@ class RolePermissionSeeder extends Seeder
         }
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        if ($delivered > 0) {
+            $this->command?->info(sprintf('Added %d new permission grant(s) to existing roles.', $delivered));
+        }
 
         $this->command?->info(sprintf(
             '%d permissions available. %s',

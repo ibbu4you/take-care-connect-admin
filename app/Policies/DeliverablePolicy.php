@@ -79,7 +79,35 @@ class DeliverablePolicy
     {
         return $actor->can('deliverables.update')
             && $deliverable->stage !== DeliverableStage::Published
-            && $this->view($actor, $deliverable);
+            && $this->handsOn($actor, $deliverable);
+    }
+
+    /**
+     * Seeing a piece is wider than changing it.
+     *
+     * The interview's creative may look at every piece cut from it, but only
+     * the person making a piece — or whoever requested it, runs the interview,
+     * or oversees everything — may change or post it. Reading and editing used
+     * to be the same test, so one creative could rewrite or post another's reel.
+     */
+    private function handsOn(User $actor, Deliverable $deliverable): bool
+    {
+        if (! $this->view($actor, $deliverable)) {
+            return false;
+        }
+
+        $id = $actor->getKey();
+
+        if (Scope::seesEverything($actor, 'deliverables')
+            || $deliverable->assigned_to === $id
+            || $deliverable->assigned_by === $id) {
+            return true;
+        }
+
+        $parent = $deliverable->deliverableOf;
+
+        return $parent instanceof Interview
+            && in_array($id, array_filter([$parent->anchor_id, $parent->scheduled_by, $parent->content_owner_id]), true);
     }
 
     /**
@@ -109,7 +137,7 @@ class DeliverablePolicy
     {
         return $actor->can('deliverables.approve')
             && $deliverable->stage === DeliverableStage::Review
-            && $deliverable->assigned_to !== $actor->getKey()
+            && ! $this->shapedBy($actor, $deliverable)
             && $this->view($actor, $deliverable);
     }
 
@@ -123,7 +151,10 @@ class DeliverablePolicy
     {
         return $actor->can('deliverables.publish')
             && $deliverable->stage->isReadyToPost()
-            && $this->view($actor, $deliverable);
+            // Whoever approved it does not also post it: two people see every
+            // piece before it goes out under the organisation's name.
+            && $deliverable->approved_by !== $actor->getKey()
+            && $this->handsOn($actor, $deliverable);
     }
 
     public function assign(User $actor, Deliverable $deliverable): bool
@@ -133,12 +164,31 @@ class DeliverablePolicy
 
     public function recordLink(User $actor, Deliverable $deliverable): bool
     {
-        return $actor->can('social.links.record') && $this->view($actor, $deliverable);
+        // Extra links are for work already out — the same reel cross-posted.
+        // On anything earlier, a link would mark unapproved work as live.
+        return $actor->can('social.links.record')
+            && $deliverable->stage === DeliverableStage::Published
+            && $this->view($actor, $deliverable);
     }
 
     public function delete(User $actor, Deliverable $deliverable): bool
     {
         return $actor->can('deliverables.delete') && $deliverable->stage !== DeliverableStage::Published;
+    }
+
+    /**
+     * Whether this person made the piece under review.
+     *
+     * The assignee alone could be changed by reassigning first, so it also
+     * counts who submitted it and who uploaded any version of it.
+     */
+    private function shapedBy(User $actor, Deliverable $deliverable): bool
+    {
+        $id = $actor->getKey();
+
+        return $deliverable->assigned_to === $id
+            || $deliverable->submitted_by === $id
+            || $deliverable->files()->where('uploaded_by', $id)->exists();
     }
 
     public function downloadFile(User $actor, Deliverable $deliverable): bool

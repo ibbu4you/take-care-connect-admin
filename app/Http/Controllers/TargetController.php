@@ -8,6 +8,7 @@ use App\Models\Target;
 use App\Models\User;
 use App\Support\Roles;
 use App\Support\Settings;
+use App\Support\Workflow\InterviewStage;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -36,8 +37,16 @@ class TargetController extends Controller
         // Somebody who can only see their own target gets a table of one row —
         // which is the honest answer, rather than an empty page.
         $people = $user->canAny(['targets.view.all', 'targets.manage'])
-            // Everybody who sells: the people a monthly target is set for.
-            ? User::query()->active()->role([Roles::RELATIONSHIP_MANAGER, Roles::SALES_EXECUTIVE, Roles::SALES_MANAGER])->orderBy('name')->get()
+            // Everybody who sells now, plus anybody who had a target that
+            // month — so a past month still shows the people who were in it,
+            // even after they leave. Deactivating someone used to rewrite
+            // history.
+            ? User::query()
+                ->where(fn ($query) => $query
+                    ->where(fn ($current) => $current->active()->role([Roles::RELATIONSHIP_MANAGER, Roles::SALES_EXECUTIVE, Roles::SALES_MANAGER]))
+                    ->orWhereIn('id', Target::where('period', $period)->select('user_id')))
+                ->orderBy('name')
+                ->get()
             : User::query()->whereKey($user->id)->get();
 
         $targets = Target::where('period', $period)
@@ -64,8 +73,11 @@ class TargetController extends Controller
                 ->whereBetween('closed_at', [$start, $end])
                 ->count();
 
+            // A booking that was cancelled or never happened is not an
+            // interview achieved.
             $interviews = Interview::where('scheduled_by', $person->id)
                 ->whereBetween('scheduled_at', [$start, $end])
+                ->whereNotIn('stage', [InterviewStage::Cancelled->value, InterviewStage::NoShow->value])
                 ->count();
 
             return [
@@ -154,7 +166,7 @@ class TargetController extends Controller
     {
         return collect(range(0, 11))
             ->map(function (int $monthsAgo) {
-                $date = now()->subMonths($monthsAgo);
+                $date = now()->startOfMonth()->subMonthsNoOverflow($monthsAgo);
 
                 return ['value' => $date->format('Y-m'), 'label' => $date->format('F Y')];
             })

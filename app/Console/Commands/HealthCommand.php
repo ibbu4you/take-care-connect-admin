@@ -110,9 +110,18 @@ class HealthCommand extends Command
              | actually matters is whether somebody else's tables are already
              | in here.
              */
+            // Through the schema builder, which knows every driver. `SHOW
+            // TABLES` is MySQL-only, so on anything else this reported a
+            // working database as unreachable.
+            // Only this database's own tables: on MySQL the builder lists every
+            // schema on the server unless it is told which one.
+            $schema = in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)
+                ? DB::connection()->getDatabaseName()
+                : null;
+
             $tables = array_map(
-                static fn ($row) => array_values((array) $row)[0],
-                DB::select('SHOW TABLES'),
+                static fn (array $table) => $table['name'],
+                Schema::getTables($schema),
             );
 
             $foreign = array_values(array_diff($tables, self::OWNED_TABLES));

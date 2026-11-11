@@ -9,8 +9,10 @@ use App\Support\Permissions;
 use App\Support\Roles;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 use Spatie\Permission\Models\Role;
@@ -41,7 +43,9 @@ class UserController extends Controller
                         ->orWhere('job_title', 'like', $term);
                 });
             })
-            ->when($filters['role'] !== '', fn ($query) => $query->role($filters['role']))
+            // Only a role that exists: an unknown name made spatie throw, and the
+            // list page answered a typo in the address bar with a 500.
+            ->when(in_array($filters['role'], Roles::names(), true), fn ($query) => $query->role($filters['role']))
             ->when($filters['status'] === 'active', fn ($query) => $query->where('is_active', true))
             ->when($filters['status'] === 'inactive', fn ($query) => $query->where('is_active', false))
             ->orderBy('name')
@@ -78,12 +82,18 @@ class UserController extends Controller
                 ...$request->safe()->only(['name', 'email', 'phone', 'job_title', 'team']),
                 'password' => Hash::make($request->string('password')->toString()),
                 'is_active' => $request->boolean('is_active', true),
-                'denied_permissions' => $this->cleanDenials($request),
                 'email_verified_at' => now(),
             ]);
 
             $user->syncRoles($request->input('roles', []));
-            $user->syncPermissions($this->allowedDirectPermissions($request));
+            $user->update(['denied_permissions' => $this->cleanDenials($request, $user)]);
+            $user->syncPermissions($this->allowedDirectPermissions($request, $user));
+
+            activity()
+                ->performedOn($user)
+                ->causedBy($request->user())
+                ->withProperties(['attributes' => $this->accessSnapshot($user)])
+                ->log('access granted');
 
             return $user;
         });
@@ -116,21 +126,50 @@ class UserController extends Controller
 
     public function update(UpdateUserRequest $request, User $user): RedirectResponse
     {
-        DB::transaction(function () use ($request, $user) {
+        $actor = $request->user();
+        $before = $this->accessSnapshot($user);
+
+        DB::transaction(function () use ($request, $user, $actor, $before) {
             $user->fill($request->safe()->only(['name', 'email', 'phone', 'job_title', 'team']));
-            $user->is_active = $request->boolean('is_active');
-            $user->denied_permissions = $this->cleanDenials($request);
+
+            // Only when the form actually sent it. A missing field is not a
+            // "no" — reading it as one deactivated people by accident.
+            if ($request->has('is_active')) {
+                $user->is_active = $request->boolean('is_active');
+            }
+
+            $user->denied_permissions = $this->cleanDenials($request, $user);
 
             // An empty password box means "leave it alone" — the common case
             // when somebody is only correcting a job title.
             if ($request->filled('password')) {
                 $user->password = Hash::make($request->string('password')->toString());
+
+                // A new password signs the account out everywhere, including
+                // "remember me" cookies, which otherwise outlive it.
+                $user->setRememberToken(Str::random(60));
+                $this->endSessions($user);
             }
 
             $user->save();
 
             $user->syncRoles($request->input('roles', []));
-            $user->syncPermissions($this->allowedDirectPermissions($request));
+            $user->syncPermissions($this->allowedDirectPermissions($request, $user));
+
+            $user->unsetRelation('roles')->unsetRelation('permissions');
+            $after = $this->accessSnapshot($user);
+
+            if ($after !== $before) {
+                activity()
+                    ->performedOn($user)
+                    ->causedBy($actor)
+                    ->withProperties(['old' => $before, 'attributes' => $after])
+                    ->log('access changed');
+            }
+
+            if ($request->filled('password')) {
+                activity()->performedOn($user)->causedBy($actor)->log('password reset');
+            }
         });
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
@@ -194,6 +233,9 @@ class UserController extends Controller
             'two_factor_secret' => null,
             'two_factor_recovery_codes' => null,
             'two_factor_confirmed_at' => null,
+            // "Remember me" would otherwise carry a stolen device straight past
+            // the reset: the cookie never needs the second factor again.
+            'remember_token' => Str::random(60),
         ])->save();
 
         /*
@@ -260,15 +302,16 @@ class UserController extends Controller
      *
      * @return list<string>
      */
-    private function cleanDenials(Request $request): array
+    private function cleanDenials(Request $request, User $subject): array
     {
-        if (! $request->user()->can('users.permissions.manage')) {
-            return [];
+        // Somebody who may not change permissions leaves them exactly as they
+        // were. Returning nothing here used to wipe every revocation whenever
+        // anybody corrected a job title.
+        if (! $request->user()->can('managePermissions', $subject)) {
+            return $subject->denied_permissions ?? [];
         }
 
-        $granted = collect($request->input('roles', []))
-            ->flatMap(fn (string $role) => Roles::definitions()[$role] ?? [])
-            ->unique();
+        $granted = $this->grantedByRoles($request->input('roles', []));
 
         return collect($request->input('denied_permissions', []))
             ->filter(fn (string $permission) => $granted->contains($permission))
@@ -284,22 +327,61 @@ class UserController extends Controller
      *
      * @return list<string>
      */
-    private function allowedDirectPermissions(Request $request): array
+    private function allowedDirectPermissions(Request $request, User $subject): array
     {
-        if (! $request->user()->can('users.permissions.manage')) {
-            return [];
+        if (! $request->user()->can('managePermissions', $subject)) {
+            return $subject->directPermissionNames();
         }
 
         // A permission a role already grants does not need a direct grant too.
         // Storing both makes the matrix ambiguous about where it came from.
-        $fromRoles = collect($request->input('roles', []))
-            ->flatMap(fn (string $role) => Roles::definitions()[$role] ?? [])
-            ->unique();
+        $fromRoles = $this->grantedByRoles($request->input('roles', []));
 
         return collect($request->input('direct_permissions', []))
             ->reject(fn (string $permission) => $fromRoles->contains($permission))
             ->values()
             ->all();
+    }
+
+    /**
+     * What these roles grant as the system stands — the Roles page can change
+     * that, so the definitions in code are only the starting point.
+     *
+     * @param  array<int, string>  $roles
+     * @return Collection<int, string>
+     */
+    private function grantedByRoles(array $roles): Collection
+    {
+        return Role::whereIn('name', $roles)
+            ->with('permissions:id,name')
+            ->get()
+            ->flatMap(fn (Role $role) => $role->permissions->pluck('name'))
+            ->unique()
+            ->values();
+    }
+
+    /**
+     * Who someone is allowed to be, for the audit trail.
+     *
+     * @return array{roles: list<string>, direct: list<string>, denied: list<string>}
+     */
+    private function accessSnapshot(User $user): array
+    {
+        $roles = $user->roles()->pluck('name')->sort()->values()->all();
+        $direct = $user->permissions()->pluck('name')->sort()->values()->all();
+        $denied = collect($user->denied_permissions ?? [])->sort()->values()->all();
+
+        return ['roles' => $roles, 'direct' => $direct, 'denied' => $denied];
+    }
+
+    /** Sign somebody out of every device, where sessions are stored in the database. */
+    private function endSessions(User $user): void
+    {
+        if (config('session.driver') === 'database') {
+            DB::table(config('session.table', 'sessions'))
+                ->where('user_id', $user->getKey())
+                ->delete();
+        }
     }
 
     /**

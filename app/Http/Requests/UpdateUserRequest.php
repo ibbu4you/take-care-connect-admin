@@ -57,7 +57,12 @@ class UpdateUserRequest extends FormRequest
                 $subject = $this->route('user');
                 $actor = $this->user();
 
-                foreach ($this->input('roles', []) as $role) {
+                // Only roles being newly given. Keeping a role somebody already
+                // has is not handing it out — checking those stopped an admin
+                // with a single revocation from saving their own account.
+                $held = $subject->roles()->pluck('name')->all();
+
+                foreach (array_diff($this->input('roles', []), $held) as $role) {
                     if (! $actor->can('assignRole', [User::class, $role])) {
                         $validator->errors()->add('roles', "You cannot assign the {$role} role.");
                     }
@@ -74,14 +79,18 @@ class UpdateUserRequest extends FormRequest
                  | because it does not receive the submitted payload.
                  */
                 if ($actor->is($subject)) {
-                    if (! $this->boolean('is_active')) {
+                    if ($this->has('is_active') && ! $this->boolean('is_active')) {
                         $validator->errors()->add('is_active', 'You cannot deactivate your own account.');
                     }
 
-                    if (in_array('users.update', $this->input('denied_permissions', []), true)) {
+                    // Only a new revocation: re-saving with one already in place
+                    // is not taking anything further away.
+                    $newlyDenied = array_diff((array) $this->input('denied_permissions', []), $subject->denied_permissions ?? []);
+
+                    if (array_intersect(UserPolicy::ADMIN_ESSENTIALS, $newlyDenied) !== []) {
                         $validator->errors()->add(
                             'denied_permissions',
-                            'You cannot revoke your own permission to manage accounts.',
+                            'You cannot revoke your own access to accounts or roles.',
                         );
                     }
 
@@ -126,12 +135,17 @@ class UpdateUserRequest extends FormRequest
                  | nobody able to grant it back. Demotion and revocation are the
                  | same door, and both have to be held shut.
                  */
+                if ($this->has('is_active') && ! $this->boolean('is_active') && UserPolicy::isLastAdmin($subject)) {
+                    $validator->errors()->add(
+                        'is_active',
+                        'This is the only active administrator. Promote somebody else before switching this account off.',
+                    );
+                }
+
                 $denied = (array) $this->input('denied_permissions', []);
 
                 if ($denied !== [] && UserPolicy::isLastAdmin($subject)) {
-                    $blocked = array_intersect($denied, [
-                        'users.update', 'users.permissions.manage', 'roles.update',
-                    ]);
+                    $blocked = array_intersect($denied, UserPolicy::ADMIN_ESSENTIALS);
 
                     if ($blocked !== []) {
                         $validator->errors()->add(

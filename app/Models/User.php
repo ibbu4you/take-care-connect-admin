@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Support\Permissions;
 use App\Support\Roles;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -74,6 +75,21 @@ class User extends Authenticatable
         'two_factor_secret',
         'two_factor_recovery_codes',
     ];
+
+    /**
+     * Stored in lower case.
+     *
+     * Sign-in compares in lower case, and on a case-sensitive database an
+     * account created as "Asha@Example.com" could then never sign in.
+     *
+     * @return Attribute<string, string>
+     */
+    protected function email(): Attribute
+    {
+        return Attribute::make(
+            set: fn (?string $value) => $value === null ? null : mb_strtolower(trim($value)),
+        );
+    }
 
     protected function casts(): array
     {

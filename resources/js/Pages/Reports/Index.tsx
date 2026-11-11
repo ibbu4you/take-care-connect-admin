@@ -40,7 +40,6 @@ interface ReportsProps {
     };
     content: {
         published: number;
-        words_published: number;
         open: number;
         overdue: number;
         by_stage: Bar[];
@@ -150,7 +149,6 @@ export default function Reports({ window: period, options, pipeline, interviews,
                 <Panel title="Content" icon={FileText}>
                     <Figures>
                         <Figure label="Published" value={number(content.published)} hint="Live on the website" />
-                        <Figure label="Words" value={number(content.words_published)} hint="Across published pieces" />
                         <Figure
                             label="Days to publish"
                             value={content.median_days_to_publish !== null ? String(content.median_days_to_publish) : '—'}

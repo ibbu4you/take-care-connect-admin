@@ -4,6 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Article;
 use App\Models\ArticleAsset;
+use App\Rules\PublicUrl;
+use App\Services\StageMachine;
+use App\Support\ArticleReview;
+use App\Support\Workflow\ArticleStage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -21,6 +25,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class ArticleAssetController extends Controller
 {
+    public function __construct(private readonly StageMachine $stages) {}
+
     public function store(Request $request, Article $article): RedirectResponse
     {
         $this->authorize('uploadAssets', $article);
@@ -32,12 +38,20 @@ class ArticleAssetController extends Controller
             // 50 MB, matching interview assets: a draft with photographs in it
             // is bigger than a page of text, and the old 10 MB cap was set
             // when this only ever carried images for the body editor.
-            'file' => ['required_without:url', 'nullable', 'file', 'max:51200'],
-            'url' => ['required_without:file', 'nullable', 'url', 'max:1000'],
+            // A draft is a document and an image is an image. With no list, an
+            // .html or .exe was accepted as "the draft".
+            'file' => ['required_without:url', 'nullable', 'file', 'max:51200', match ($request->input('kind')) {
+                'image' => 'mimes:jpg,jpeg,png,gif,webp',
+                default => 'mimes:docx,doc,pdf,odt,rtf,txt',
+            }],
+            'url' => ['required_without:file', 'nullable', 'max:1000', new PublicUrl([], 'Paste a link that starts with https:// — a Google Doc or Drive link works.')],
         ], [
             'file.required_without' => 'Attach a file or paste a link.',
             'url.required_without' => 'Attach a file or paste a link.',
-            'file.max' => 'That file is over 10 MB. Compress it before uploading.',
+            'file.max' => 'That file is over 50 MB. Compress it, or paste a Drive link instead.',
+            'file.mimes' => $request->input('kind') === 'image'
+                ? 'Upload a JPG, PNG, GIF or WebP image.'
+                : 'Upload the draft as Word, PDF, ODT, RTF or plain text.',
         ]);
 
         $asset = new ArticleAsset([
@@ -64,6 +78,12 @@ class ArticleAssetController extends Controller
 
         $asset->save();
 
+        // A new draft under review, or after approval, is not what was
+        // reviewed or approved.
+        if ($asset->kind === 'document') {
+            ArticleReview::reopenIfChanged($article, $request->user(), $this->stages);
+        }
+
         return back()->with('success', 'Attached.');
     }
 
@@ -89,8 +109,21 @@ class ArticleAssetController extends Controller
 
         // File first, then the row: the other order can orphan a file on disk
         // if the delete fails halfway.
+        $article = $asset->article;
+        $wasDraft = $asset->kind === 'document';
+
+        // The draft a reviewer is reading — or approved — stays. Upload a new
+        // version instead; deleting it left the review pointing at nothing.
+        if ($wasDraft && in_array($article->stage, [ArticleStage::InternalReview, ArticleStage::Approved], true)) {
+            return back()->with('error', 'This draft is under review or approved. Upload a new version instead of deleting it.');
+        }
+
         $asset->deleteFile();
         $asset->delete();
+
+        if ($wasDraft) {
+            ArticleReview::reopenIfChanged($article, $request->user(), $this->stages);
+        }
 
         return back()->with('success', 'Removed.');
     }

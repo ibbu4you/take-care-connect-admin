@@ -62,6 +62,18 @@ class HandoverService
         }
 
         return DB::transaction(function () use ($interview, $by, $writer, $note): Article {
+            // Once only. "Already handed over" is not a no-op here, as it is
+            // for an ordinary stage move: going through again would create a
+            // second article for the same interview.
+            $stage = Interview::whereKey($interview->getKey())->lockForUpdate()->value('stage');
+            $stage = $stage instanceof InterviewStage ? $stage : InterviewStage::tryFrom((string) $stage);
+
+            if ($stage !== InterviewStage::Conducted || Article::where('interview_id', $interview->getKey())->exists()) {
+                throw ValidationException::withMessages([
+                    'handover' => 'This interview has already been handed over.',
+                ]);
+            }
+
             $this->stages->transition($interview, InterviewStage::HandedOver, $by, $note);
 
             $interview->forceFill([
@@ -126,6 +138,15 @@ class HandoverService
             };
 
             $interview->forceFill([$column => $to->getKey()])->save();
+
+            // After handover the article carries its own writer field; leaving
+            // it behind meant the new writer was "content owner" of an article
+            // still assigned to somebody else.
+            if ($role === 'content') {
+                Article::where('interview_id', $interview->getKey())
+                    ->where('stage', '!=', ArticleStage::Published->value)
+                    ->update(['writer_id' => $to->getKey()]);
+            }
 
             return $interview->assignments()->create([
                 'assigned_to' => $to->getKey(),

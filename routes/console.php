@@ -66,9 +66,16 @@ Schedule::call(function (): void {
 
 /*
  | Sessions expire in the database and nothing removes the rows, so a year of
- | daily sign-ins leaves a table of dead sessions. Laravel ships the command;
- | it just has to be called.
+ | daily sign-ins leaves a table of dead sessions.
+ |
+ | Done here rather than with a command: Laravel has no `session:prune`, and
+ | the job that called it failed silently every night.
  */
-Schedule::command('session:prune')
+Schedule::call(function (): void {
+    DB::table(config('session.table', 'sessions'))
+        ->where('last_activity', '<', now()->subMinutes((int) config('session.lifetime', 120))->getTimestamp())
+        ->delete();
+})
     ->daily()
+    ->name('prune-expired-sessions')
     ->when(fn (): bool => config('session.driver') === 'database');

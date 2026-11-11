@@ -87,8 +87,8 @@ return [
         [
             'key' => 'deliverables.turnaround_days',
             'label' => 'Creative work is due',
-            'unit' => 'days after it is commissioned',
-            'help' => 'The deadline suggested on the form when a poster or reel is commissioned.',
+            'unit' => 'days after it is requested',
+            'help' => 'The deadline suggested on the form when a poster or reel is requested.',
             'min' => 1,
             'max' => 90,
             'group' => 'Creative',

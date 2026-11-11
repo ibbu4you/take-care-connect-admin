@@ -28,7 +28,9 @@ class AuditLogController extends Controller
         ];
 
         $activities = Activity::query()
-            ->with('causer:id,name,email')
+            // Including removed accounts: a deleted user's past actions still
+            // need a name against them, or the log cannot say who did what.
+            ->with(['causer' => fn ($query) => $query->withTrashed()->select('id', 'name', 'email')])
             ->when($filters['event'] !== '', fn ($query) => $query->where('event', $filters['event']))
             ->when($filters['causer'] !== '', fn ($query) => $query->where('causer_id', $filters['causer']))
             ->when($filters['search'] !== '', function ($query) use ($filters) {
@@ -66,7 +68,7 @@ class AuditLogController extends Controller
                 ->distinct()
                 ->orderBy('event')
                 ->pluck('event'),
-            'causers' => User::query()
+            'causers' => User::withTrashed()
                 ->whereIn('id', Activity::query()->whereNotNull('causer_id')->distinct()->pluck('causer_id'))
                 ->orderBy('name')
                 ->get(['id', 'name'])

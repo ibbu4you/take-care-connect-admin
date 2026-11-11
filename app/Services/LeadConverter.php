@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Support\Workflow\LeadStatus;
 use App\Support\Workflow\PipelineStage;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Turning a lead into a client.
@@ -32,7 +33,10 @@ use Illuminate\Support\Facades\DB;
  */
 class LeadConverter
 {
-    public function __construct(private readonly CodeGenerator $codes) {}
+    public function __construct(
+        private readonly CodeGenerator $codes,
+        private readonly StageMachine $stages,
+    ) {}
 
     /**
      * @param  array{title?: string|null, expected_value?: float|string|null}  $deal
@@ -40,7 +44,17 @@ class LeadConverter
     public function convert(Lead $lead, User $by, array $deal = []): Client
     {
         return DB::transaction(function () use ($lead, $by, $deal): Client {
-            $client = Client::create([
+            // The same business, already a client: link to it rather than
+            // making a second copy that splits its history in two.
+            $client = $this->existingClient($lead);
+
+            if ($client !== null && ! $by->can('view', $client)) {
+                throw ValidationException::withMessages([
+                    'convert' => "This business is already a client ({$client->name}), looked after by someone else. Ask them, or an admin, to take it from here.",
+                ]);
+            }
+
+            $client ??= Client::create([
                 'name' => $lead->name,
                 'contact_person' => $lead->contact_person,
                 'email' => $lead->email,
@@ -93,7 +107,7 @@ class LeadConverter
              | second job that gets forgotten.
              */
             if (filled($deal['title'] ?? null)) {
-                Deal::create([
+                $opened = Deal::create([
                     'code' => $this->codes->next('DEA'),
                     'client_id' => $client->getKey(),
                     'title' => $deal['title'],
@@ -106,9 +120,37 @@ class LeadConverter
                     'expected_value' => $deal['expected_value'] ?? $lead->estimated_value ?? 0,
                     'last_activity_at' => now(),
                 ]);
+
+                // Every deal's history starts with how it was opened.
+                $this->stages->recordCreation($opened, $by, "Opened when {$lead->name} became a client");
             }
 
             return $client;
         });
+    }
+
+    /** A client with this lead's phone number or email, if one exists. */
+    private function existingClient(Lead $lead): ?Client
+    {
+        $phone = filled($lead->phone) ? preg_replace('/\D+/', '', $lead->phone) : null;
+        $email = filled($lead->email) ? mb_strtolower(trim($lead->email)) : null;
+
+        if (($phone === null || strlen($phone) < 7) && $email === null) {
+            return null;
+        }
+
+        return Client::query()
+            ->where(function ($query) use ($phone, $email) {
+                // The last ten digits: "+91 98765 43210" and "098765 43210"
+                // are the same number stored two ways.
+                if ($phone !== null && strlen($phone) >= 7) {
+                    $query->orWhere('phone_normalized', 'like', '%'.substr($phone, -10));
+                }
+
+                if ($email !== null) {
+                    $query->orWhereRaw('LOWER(email) = ?', [$email]);
+                }
+            })
+            ->first();
     }
 }

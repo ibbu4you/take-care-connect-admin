@@ -39,7 +39,34 @@ class SocialPost extends Model
 
     public static function hashFor(string $platform, string $url): string
     {
-        return hash('sha256', mb_strtolower(trim($platform)).'|'.trim($url));
+        return hash('sha256', mb_strtolower(trim($platform)).'|'.static::canonical($url));
+    }
+
+    /**
+     * One spelling per post, for spotting the same link twice.
+     *
+     * "https://www.instagram.com/p/abc/?igsh=x" and "instagram.com/p/abc" are
+     * the same post; comparing the raw text let it be recorded against two
+     * pieces of work. Scheme, "www.", case of the host, a trailing slash,
+     * the fragment and tracking parameters are dropped — except YouTube's
+     * `v`, which is the video itself.
+     */
+    public static function canonical(string $url): string
+    {
+        $parts = parse_url(trim($url));
+
+        if ($parts === false || ! isset($parts['host'])) {
+            return mb_strtolower(trim($url));
+        }
+
+        $host = preg_replace('/^(www|m)\./', '', mb_strtolower($parts['host']));
+        $path = rtrim($parts['path'] ?? '', '/');
+
+        parse_str($parts['query'] ?? '', $query);
+        $keep = array_intersect_key($query, array_flip(['v', 'id', 'story_fbid', 'fbid']));
+        ksort($keep);
+
+        return $host.$path.($keep !== [] ? '?'.http_build_query($keep) : '');
     }
 
     public function platformLabel(): string

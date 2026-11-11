@@ -16,7 +16,7 @@ interface TwoFactorSetupProps {
 }
 
 export default function TwoFactorSetup({ secret, qr_code, already_enabled }: TwoFactorSetupProps) {
-    const { data, setData, post, processing, errors } = useForm({ code: '' });
+    const { data, setData, post, processing, errors } = useForm({ code: '', password: '' });
 
     function submit(event: FormEvent) {
         event.preventDefault();
@@ -88,9 +88,24 @@ export default function TwoFactorSetup({ secret, qr_code, already_enabled }: Two
                             />
                         </Field>
 
+                        {/* Replacing a working setup costs the password, as switching it off does. */}
+                        {already_enabled && (
+                            <Field label="Your password" htmlFor="password" error={errors.password} required>
+                                <Input
+                                    id="password"
+                                    type="password"
+                                    autoComplete="current-password"
+                                    value={data.password}
+                                    onChange={(event) => setData('password', event.target.value)}
+                                    className="w-56"
+                                    invalid={Boolean(errors.password)}
+                                />
+                            </Field>
+                        )}
+
                         <Button type="submit" loading={processing}>
                             <ShieldCheck />
-                            Turn on
+                            {already_enabled ? 'Replace' : 'Turn on'}
                         </Button>
                     </form>
 

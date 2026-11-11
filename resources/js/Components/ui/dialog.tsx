@@ -1,5 +1,6 @@
 import { X } from 'lucide-react';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { router } from '@inertiajs/react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 
@@ -34,6 +35,17 @@ const SIZES = {
 export function Dialog({ open, onClose, title, description, children, footer, size = 'md' }: DialogProps) {
     const panel = useRef<HTMLDivElement>(null);
 
+    /*
+     | The latest onClose, read at the moment it is needed.
+     |
+     | Callers pass an inline function, which is a new one on every render. As
+     | an effect dependency it re-ran the setup below on every keystroke in the
+     | dialog — and the setup moves focus to the panel, so typing in a field
+     | lost focus after each letter.
+     */
+    const closeRef = useRef(onClose);
+    closeRef.current = onClose;
+
     useEffect(() => {
         if (!open) {
             return;
@@ -41,7 +53,7 @@ export function Dialog({ open, onClose, title, description, children, footer, si
 
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.key === 'Escape') {
-                onClose();
+                closeRef.current();
             }
         };
 
@@ -64,7 +76,7 @@ export function Dialog({ open, onClose, title, description, children, footer, si
             document.body.style.overflow = previousOverflow;
             document.removeEventListener('keydown', onKeyDown);
         };
-    }, [open, onClose]);
+    }, [open]);
 
     if (!open || typeof document === 'undefined') {
         return null;
@@ -89,9 +101,9 @@ export function Dialog({ open, onClose, title, description, children, footer, si
                     SIZES[size],
                 )}
             >
-                <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4">
+                <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-6 py-5">
                     <div className="min-w-0">
-                        <h2 className="text-base font-bold tracking-tight">{title}</h2>
+                        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
                         {description && <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>}
                     </div>
 
@@ -106,10 +118,10 @@ export function Dialog({ open, onClose, title, description, children, footer, si
                 </div>
 
                 {/* The body scrolls; the header and footer stay put. */}
-                <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{children}</div>
 
                 {footer && (
-                    <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-5 py-4">
+                    <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-muted/40 px-6 py-4">
                         {footer}
                     </div>
                 )}
@@ -144,6 +156,24 @@ export function ConfirmDialog({
     processing?: boolean;
     destructive?: boolean;
 }) {
+    /*
+     | Busy from the first click until the request it started finishes.
+     |
+     | Most callers do not pass `processing`, so a quick double click on
+     | "Delete" or "Approve" used to send the action twice.
+     */
+    const [busy, setBusy] = useState(false);
+
+    useEffect(() => router.on('finish', () => setBusy(false)), []);
+
+    useEffect(() => {
+        if (!open) {
+            setBusy(false);
+        }
+    }, [open]);
+
+    const working = processing || busy;
+
     return (
         <Dialog
             open={open}
@@ -161,8 +191,12 @@ export function ConfirmDialog({
                     </button>
                     <button
                         type="button"
-                        onClick={onConfirm}
-                        disabled={processing}
+                        onClick={() => {
+                            if (working) return;
+                            setBusy(true);
+                            onConfirm();
+                        }}
+                        disabled={working}
                         className={cn(
                             'inline-flex h-9 items-center rounded-control px-4 text-sm font-medium transition-colors disabled:opacity-50',
                             destructive

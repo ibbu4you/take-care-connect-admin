@@ -43,6 +43,7 @@ class Deliverable extends Model
         'assigned_to',
         'assigned_by',
         'approved_by',
+        'submitted_by',
         'due_on',
         'priority',
         'brief',
@@ -113,9 +114,22 @@ class Deliverable extends Model
         return $this->files()->orderByDesc('version')->first();
     }
 
+    /**
+     * The next version number, never reused.
+     *
+     * Counted on the deliverable rather than read off the remaining files, so
+     * deleting a version does not free its number for a different upload.
+     * Locked, so two uploads at once do not both become the same version.
+     */
     public function nextVersion(): int
     {
-        return (int) ($this->files()->max('version') ?? 0) + 1;
+        $issued = (int) static::whereKey($this->getKey())->lockForUpdate()->value('versions_issued');
+        $next = max($issued, (int) ($this->files()->max('version') ?? 0)) + 1;
+
+        static::whereKey($this->getKey())->update(['versions_issued' => $next]);
+        $this->versions_issued = $next;
+
+        return $next;
     }
 
     /**

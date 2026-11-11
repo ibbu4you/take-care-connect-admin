@@ -5,12 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\Client;
 use App\Models\Deal;
 use App\Models\User;
+use App\Support\Csv;
 use App\Support\Roles;
-use App\Support\Scope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -168,7 +169,11 @@ class ClientController extends Controller
                     'name', 'contact_person', 'email', 'phone', 'whatsapp', 'website',
                     'instagram', 'city', 'state', 'trade', 'address', 'status', 'notes', 'source',
                 ]),
+                'owner_id' => $client->owner_id,
             ],
+            // Handing a client to another manager — when somebody leaves, their
+            // book has to go somewhere. An administrative call.
+            'owners' => $request->user()->can('assign', $client) ? $this->ownerOptions() : [],
         ]);
     }
 
@@ -176,7 +181,32 @@ class ClientController extends Controller
     {
         $this->authorize('update', $client);
 
-        $client->update($this->validated($request, $client));
+        $validated = $this->validated($request, $client);
+
+        if ($request->filled('owner_id') && (int) $request->input('owner_id') !== (int) $client->owner_id) {
+            $this->authorize('assign', $client);
+
+            $request->validate([
+                'owner_id' => ['integer', Rule::in(array_column($this->ownerOptions(), 'id'))],
+            ], ['owner_id.in' => 'Choose an active relationship or sales manager.']);
+
+            $validated['owner_id'] = (int) $request->input('owner_id');
+        }
+
+        $previousOwner = $client->owner_id;
+
+        DB::transaction(function () use ($client, $validated, $previousOwner) {
+            $client->update($validated);
+
+            // The open deals the previous manager was running go with the
+            // client; closed ones stay theirs, as history.
+            if (isset($validated['owner_id']) && $previousOwner !== null && $validated['owner_id'] !== (int) $previousOwner) {
+                Deal::where('client_id', $client->id)
+                    ->where('owner_id', $previousOwner)
+                    ->open()
+                    ->update(['owner_id' => $validated['owner_id']]);
+            }
+        });
 
         return redirect()
             ->route('clients.show', $client)
@@ -199,7 +229,7 @@ class ClientController extends Controller
         return response()->streamDownload(function () use ($query) {
             $handle = fopen('php://output', 'wb');
 
-            fputcsv($handle, [
+            Csv::put($handle, [
                 'Code', 'Name', 'Contact', 'Phone', 'Email',
                 'Trade', 'City', 'State', 'Status', 'Owner', 'Added',
             ]);
@@ -208,7 +238,7 @@ class ClientController extends Controller
             // memory all at once.
             $query->orderBy('name')->chunk(200, function ($clients) use ($handle) {
                 foreach ($clients as $client) {
-                    fputcsv($handle, [
+                    Csv::put($handle, [
                         $client->id,
                         $client->name,
                         $client->contact_person,
@@ -257,6 +287,22 @@ class ClientController extends Controller
     private function scopedQuery(User $user): Builder
     {
         return Client::visibleTo($user);
+    }
+
+    /**
+     * People who can look after a client.
+     *
+     * @return list<array{id: int, name: string}>
+     */
+    private function ownerOptions(): array
+    {
+        return User::query()
+            ->active()
+            ->role([Roles::RELATIONSHIP_MANAGER, Roles::SALES_EXECUTIVE, Roles::SALES_MANAGER])
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (User $user) => ['id' => $user->id, 'name' => $user->name])
+            ->all();
     }
 
     /**

@@ -225,6 +225,9 @@ Route::middleware(['auth', 'active', '2fa'])->group(function () {
         Route::get('/deliverable-files/{file}', [DeliverableFileController::class, 'download'])
             ->name('deliverables.files.download');
 
+        Route::get('/deliverable-files/{file}/preview', [DeliverableFileController::class, 'preview'])
+            ->name('deliverables.files.preview');
+
         Route::delete('/deliverable-files/{file}', [DeliverableFileController::class, 'destroy'])
             ->name('deliverables.files.destroy');
     });

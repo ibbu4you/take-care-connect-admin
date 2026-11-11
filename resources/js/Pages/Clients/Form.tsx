@@ -24,10 +24,12 @@ interface FormProps {
         status: string;
         notes: string | null;
         source: string | null;
+        owner_id: number | null;
     } | null;
+    owners?: Array<{ id: number; name: string }>;
 }
 
-export default function ClientForm({ client }: FormProps) {
+export default function ClientForm({ client, owners = [] }: FormProps) {
     const editing = client !== null;
 
     const { data, setData, post, patch, processing, errors } = useForm({
@@ -45,6 +47,7 @@ export default function ClientForm({ client }: FormProps) {
         status: client?.status ?? 'active',
         source: client?.source ?? 'manual',
         notes: client?.notes ?? '',
+        owner_id: client?.owner_id ? String(client.owner_id) : '',
     });
 
     function submit(event: FormEvent) {
@@ -74,7 +77,7 @@ export default function ClientForm({ client }: FormProps) {
                 }
             />
 
-            <form onSubmit={submit} className="grid gap-6 lg:grid-cols-3">
+            <form onSubmit={submit} className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="space-y-6 lg:col-span-2">
                     <Card>
                         <CardHeader>
@@ -210,6 +213,23 @@ export default function ClientForm({ client }: FormProps) {
                                     <option value="archived">Archived</option>
                                 </Select>
                             </Field>
+
+                            {editing && owners.length > 0 && (
+                                <Field
+                                    label="Looked after by"
+                                    htmlFor="owner_id"
+                                    error={errors.owner_id}
+                                    hint="Their open deals move with the client. Closed ones stay with whoever won them."
+                                >
+                                    <Select id="owner_id" value={data.owner_id} onChange={(event) => setData('owner_id', event.target.value)}>
+                                        {owners.map((owner) => (
+                                            <option key={owner.id} value={owner.id}>
+                                                {owner.name}
+                                            </option>
+                                        ))}
+                                    </Select>
+                                </Field>
+                            )}
 
                             <Field label="How did they come in?" htmlFor="source" error={errors.source}>
                                 <Select

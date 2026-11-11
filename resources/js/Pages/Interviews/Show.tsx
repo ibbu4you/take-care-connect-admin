@@ -99,6 +99,7 @@ interface ShowProps {
         story_url: string | null;
     };
     writers: Array<{ id: number; name: string }>;
+    anchors: Array<{ id: number; name: string }>;
     deliverableKinds: KindOption[];
     creatives: Array<{ id: number; name: string }>;
     deliverables: Array<{
@@ -120,6 +121,8 @@ interface ShowProps {
         upload: boolean;
         deleteAsset: boolean;
         message: boolean;
+        reschedule: boolean;
+        publish: boolean;
     };
 }
 
@@ -128,6 +131,7 @@ type MessageKey = 'confirmation' | 'reminder' | 'story';
 export default function InterviewShow({
     interview,
     writers,
+    anchors,
     deliverableKinds,
     creatives,
     deliverables,
@@ -138,6 +142,9 @@ export default function InterviewShow({
     const [cancelling, setCancelling] = useState(false);
     const [removeAsset, setRemoveAsset] = useState<Asset | null>(null);
     const [commissioning, setCommissioning] = useState(false);
+    const [rescheduling, setRescheduling] = useState(false);
+    const [reassigning, setReassigning] = useState(false);
+    const [publishing, setPublishing] = useState(false);
 
     const ready = interview.missing_for_handover.length === 0;
 
@@ -199,7 +206,7 @@ export default function InterviewShow({
                 </Card>
             )}
 
-            <div className="grid gap-6 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="space-y-6 lg:col-span-2">
                     <ConductCard interview={interview} canEdit={can.conduct} />
 
@@ -293,6 +300,11 @@ export default function InterviewShow({
                     <Card>
                         <CardHeader>
                             <CardTitle>People</CardTitle>
+                            {can.reassign && (
+                                <Button size="sm" variant="outline" onClick={() => setReassigning(true)}>
+                                    Change
+                                </Button>
+                            )}
                         </CardHeader>
                         <CardContent className="space-y-3">
                             <PersonRow role="Anchor" person={interview.anchor} />
@@ -322,6 +334,20 @@ export default function InterviewShow({
                         </CardContent>
                     </Card>
 
+                    {can.publish && (
+                        <Button className="w-full" onClick={() => setPublishing(true)}>
+                            <CheckCircle2 />
+                            Mark published
+                        </Button>
+                    )}
+
+                    {can.reschedule && (
+                        <Button variant="outline" className="w-full" onClick={() => setRescheduling(true)}>
+                            <CalendarClock />
+                            Reschedule
+                        </Button>
+                    )}
+
                     {can.cancel && (
                         <Button variant="outline" className="w-full" onClick={() => setCancelling(true)}>
                             <X />
@@ -346,6 +372,38 @@ export default function InterviewShow({
             />
 
             <CancelDialog open={cancelling} onClose={() => setCancelling(false)} interviewId={interview.id} />
+
+            <RescheduleDialog
+                open={rescheduling}
+                onClose={() => setRescheduling(false)}
+                interviewId={interview.id}
+                current={interview.scheduled_at}
+            />
+
+            <ReassignDialog
+                open={reassigning}
+                onClose={() => setReassigning(false)}
+                interview={interview}
+                anchors={anchors}
+                writers={writers}
+                creatives={creatives}
+            />
+
+            <ConfirmDialog
+                open={publishing}
+                onClose={() => setPublishing(false)}
+                onConfirm={() =>
+                    router.post(
+                        `/interviews/${interview.id}/stage`,
+                        { stage: 'published' },
+                        { preserveScroll: true, onFinish: () => setPublishing(false) },
+                    )
+                }
+                title="Mark this interview published?"
+                description="Do this once its posts are out. A published interview is finished and can no longer be edited."
+                confirmLabel="Mark published"
+                destructive={false}
+            />
 
             <CommissionDialog
                 open={commissioning}
@@ -731,7 +789,7 @@ function CreativeCard({
                 {canCommission && (
                     <Button size="sm" variant="outline" onClick={onCommission}>
                         <Plus />
-                        Commission
+                        Request work
                     </Button>
                 )}
             </CardHeader>
@@ -739,7 +797,7 @@ function CreativeCard({
             {deliverables.length === 0 ? (
                 <EmptyState
                     icon={Video}
-                    title="Nothing commissioned yet"
+                    title="Nothing requested yet"
                     description="Order the posters, reels or edits the creative team should produce."
                 />
             ) : (
@@ -1073,6 +1131,186 @@ function CancelDialog({ open, onClose, interviewId }: { open: boolean; onClose: 
                         onChange={(event) => setData('reason', event.target.value)}
                         rows={3}
                         invalid={Boolean(errors.reason)}
+                    />
+                </Field>
+            </div>
+        </Dialog>
+    );
+}
+
+/**
+ * A new date for an interview that has not happened yet, or one whose subject
+ * did not turn up.
+ */
+function RescheduleDialog({
+    open,
+    onClose,
+    interviewId,
+    current,
+}: {
+    open: boolean;
+    onClose: () => void;
+    interviewId: number;
+    current: string | null;
+}) {
+    const { data, setData, post, processing, errors, reset } = useForm({
+        stage: 'rescheduled',
+        scheduled_at: '',
+        note: '',
+    });
+
+    return (
+        <Dialog
+            open={open}
+            onClose={onClose}
+            title="Reschedule"
+            description={current ? `Currently ${dateTime(current)}.` : undefined}
+            size="sm"
+            footer={
+                <>
+                    <Button variant="outline" onClick={onClose}>
+                        Keep the date
+                    </Button>
+                    <Button
+                        loading={processing}
+                        onClick={() =>
+                            post(`/interviews/${interviewId}/stage`, {
+                                preserveScroll: true,
+                                onSuccess: () => {
+                                    reset();
+                                    onClose();
+                                },
+                            })
+                        }
+                    >
+                        Reschedule
+                    </Button>
+                </>
+            }
+        >
+            <div className="space-y-4">
+                {errors.stage && <p className="text-sm font-medium text-destructive">{errors.stage}</p>}
+                <Field label="New date and time" htmlFor="reschedule_at" error={errors.scheduled_at} required>
+                    <Input
+                        id="reschedule_at"
+                        type="datetime-local"
+                        value={data.scheduled_at}
+                        onChange={(event) => setData('scheduled_at', event.target.value)}
+                        invalid={Boolean(errors.scheduled_at)}
+                    />
+                </Field>
+                <Field label="Why" htmlFor="reschedule_note" error={errors.note} hint="Optional — shown in the history.">
+                    <Textarea
+                        id="reschedule_note"
+                        value={data.note}
+                        onChange={(event) => setData('note', event.target.value)}
+                        rows={2}
+                    />
+                </Field>
+            </div>
+        </Dialog>
+    );
+}
+
+/** Hand one of the interview's jobs to somebody else. */
+function ReassignDialog({
+    open,
+    onClose,
+    interview,
+    anchors,
+    writers,
+    creatives,
+}: {
+    open: boolean;
+    onClose: () => void;
+    interview: ShowProps['interview'];
+    anchors: Array<{ id: number; name: string }>;
+    writers: Array<{ id: number; name: string }>;
+    creatives: Array<{ id: number; name: string }>;
+}) {
+    const { data, setData, post, processing, errors, reset } = useForm({
+        role: 'anchor',
+        assigned_to: '',
+        brief: '',
+    });
+
+    const people = data.role === 'content' ? writers : data.role === 'creative' ? creatives : anchors;
+    const current =
+        data.role === 'content'
+            ? interview.content_owner
+            : data.role === 'creative'
+              ? interview.creative_owner
+              : interview.anchor;
+
+    return (
+        <Dialog
+            open={open}
+            onClose={onClose}
+            title="Change who is on this interview"
+            size="sm"
+            footer={
+                <>
+                    <Button variant="outline" onClick={onClose}>
+                        Cancel
+                    </Button>
+                    <Button
+                        loading={processing}
+                        disabled={data.assigned_to === ''}
+                        onClick={() =>
+                            post(`/interviews/${interview.id}/reassign`, {
+                                preserveScroll: true,
+                                onSuccess: () => {
+                                    reset();
+                                    onClose();
+                                },
+                            })
+                        }
+                    >
+                        Reassign
+                    </Button>
+                </>
+            }
+        >
+            <div className="space-y-4">
+                <Field label="Which job" htmlFor="reassign_role" error={errors.role} required>
+                    <Select
+                        id="reassign_role"
+                        value={data.role}
+                        onChange={(event) => {
+                            setData((previous) => ({ ...previous, role: event.target.value, assigned_to: '' }));
+                        }}
+                    >
+                        <option value="anchor">Anchor — runs the interview</option>
+                        {interview.requires_article && <option value="content">Content — writes the article</option>}
+                        <option value="creative">Creative — posters and reels</option>
+                    </Select>
+                </Field>
+
+                <Field
+                    label="Give it to"
+                    htmlFor="reassign_to"
+                    error={errors.assigned_to}
+                    hint={current ? `Currently ${current.name}.` : 'Nobody has it yet.'}
+                    required
+                >
+                    <Select id="reassign_to" value={data.assigned_to} onChange={(event) => setData('assigned_to', event.target.value)}>
+                        <option value="">Choose…</option>
+                        {people
+                            .filter((person) => person.id !== current?.id)
+                            .map((person) => (
+                                <option key={person.id} value={person.id}>
+                                    {person.name}
+                                </option>
+                            ))}
+                    </Select>
+                </Field>
+
+                <Field label="Note for them" htmlFor="reassign_brief" error={errors.brief} hint="Optional.">
+                    <Textarea
+                        id="reassign_brief"
+                        value={data.brief}
+                        onChange={(event) => setData('brief', event.target.value)}
+                        rows={2}
                     />
                 </Field>
             </div>

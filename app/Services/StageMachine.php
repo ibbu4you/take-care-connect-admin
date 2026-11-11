@@ -60,6 +60,25 @@ class StageMachine
         }
 
         return DB::transaction(function () use ($model, $from, $to, $by, $note): Model {
+            /*
+             | Re-read the stage under a row lock.
+             |
+             | Two people pressing the same button at once both see the old
+             | stage in memory and would both "move" it — writing two history
+             | rows, and for a handover creating two articles. Whoever gets the
+             | lock second finds it already moved, and is refused.
+             */
+            $current = $model->newQueryWithoutScopes()
+                ->whereKey($model->getKey())
+                ->lockForUpdate()
+                ->value('stage');
+
+            $current = $current instanceof Stage ? $current->value : $current;
+
+            if ($current !== null && $current !== $from->value) {
+                throw InvalidStageTransition::between($from, $to);
+            }
+
             $model->stage = $to;
             $model->stage_entered_at = now();
             $model->save();

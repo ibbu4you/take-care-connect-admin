@@ -45,12 +45,19 @@ export default function RolesIndex({ roles, catalog, canEdit }: RolesIndexProps)
         setDraft(null);
     }
 
+    /*
+     | Built on the latest draft, not this render's copy: the module checkbox
+     | calls this once per permission in a row, and reading `current` made each
+     | call undo the one before — so "all" changed a single permission.
+     */
     function toggle(permission: string) {
-        const next = current.includes(permission)
-            ? current.filter((name) => name !== permission)
-            : [...current, permission];
+        const base = selected?.permissions ?? [];
 
-        setDraft(next);
+        setDraft((previous) => {
+            const list = previous ?? base;
+
+            return list.includes(permission) ? list.filter((name) => name !== permission) : [...list, permission];
+        });
     }
 
     function save() {

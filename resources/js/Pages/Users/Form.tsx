@@ -101,27 +101,24 @@ export default function UserForm({ user, catalog, roles, rolePermissions, canMan
     function togglePermission(permission: string) {
         const grantedByRole = fromRoles.has(permission);
 
-        if (isChecked(permission)) {
-            if (grantedByRole) {
-                setData('denied_permissions', [...data.denied_permissions, permission]);
-            } else {
-                setData(
-                    'direct_permissions',
-                    data.direct_permissions.filter((name) => name !== permission),
-                );
+        // From the latest form state: the module checkbox calls this once per
+        // permission in a row, and this render's `data` made each call
+        // overwrite the last.
+        setData((previous) => {
+            const deniedNow = previous.denied_permissions.includes(permission);
+            const directNow = previous.direct_permissions.includes(permission);
+            const on = (grantedByRole && !deniedNow) || directNow;
+
+            if (on) {
+                return grantedByRole
+                    ? { ...previous, denied_permissions: [...previous.denied_permissions, permission] }
+                    : { ...previous, direct_permissions: previous.direct_permissions.filter((name) => name !== permission) };
             }
 
-            return;
-        }
-
-        if (grantedByRole) {
-            setData(
-                'denied_permissions',
-                data.denied_permissions.filter((name) => name !== permission),
-            );
-        } else {
-            setData('direct_permissions', [...data.direct_permissions, permission]);
-        }
+            return grantedByRole
+                ? { ...previous, denied_permissions: previous.denied_permissions.filter((name) => name !== permission) }
+                : { ...previous, direct_permissions: [...previous.direct_permissions, permission] };
+        });
     }
 
     function toggleRole(role: string) {
@@ -165,7 +162,7 @@ export default function UserForm({ user, catalog, roles, rolePermissions, canMan
                 }
             />
 
-            <form onSubmit={submit} className="grid gap-6 lg:grid-cols-3">
+            <form onSubmit={submit} className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="space-y-6 lg:col-span-2">
                     <Card>
                         <CardHeader>

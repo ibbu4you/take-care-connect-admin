@@ -60,6 +60,7 @@ interface Column {
 
 interface BoardProps {
     columns: Column[];
+    idleDays: number;
     summary: {
         open_count: number;
         pipeline_value: number;
@@ -75,7 +76,7 @@ interface BoardProps {
     can: { create: boolean; move: boolean; close: boolean };
 }
 
-export default function PipelineBoard({ columns, summary, stages, clients, can }: BoardProps) {
+export default function PipelineBoard({ columns, summary, idleDays, stages, clients, can }: BoardProps) {
     const [adding, setAdding] = useState(false);
     const [dragging, setDragging] = useState<DealRow | null>(null);
 
@@ -196,7 +197,7 @@ export default function PipelineBoard({ columns, summary, stages, clients, can }
                     value={summary.idle_count}
                     icon={AlertTriangle}
                     tone={summary.idle_count > 0 ? 'warning' : 'primary'}
-                    sub="No activity for 14 days"
+                    sub={`No activity for ${idleDays} days`}
                 />
             </StatGrid>
 

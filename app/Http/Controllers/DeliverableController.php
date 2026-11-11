@@ -4,9 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\Article;
 use App\Models\Deliverable;
+use App\Models\DeliverableFile;
 use App\Models\Interview;
 use App\Models\SocialPost;
 use App\Models\User;
+use App\Rules\ActiveMember;
+use App\Rules\PublicUrl;
 use App\Services\CodeGenerator;
 use App\Services\StageMachine;
 use App\Support\Notifier;
@@ -19,6 +22,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -144,6 +148,7 @@ class DeliverableController extends Controller
                     'note' => $file->note,
                     'uploader' => $file->uploader?->name,
                     'created_at' => $file->created_at?->toIso8601String(),
+                    'media' => $file->media(),
                 ]),
 
                 'social_posts' => $deliverable->socialPosts->map(fn ($post) => [
@@ -197,7 +202,7 @@ class DeliverableController extends Controller
             'kind' => ['required', Rule::in(DeliverableKind::values())],
             'title' => ['nullable', 'string', 'max:255'],
             'quantity' => ['integer', 'min:1', 'max:10'],
-            'assigned_to' => ['nullable', 'integer', Rule::exists('users', 'id')],
+            'assigned_to' => ['nullable', 'integer', ActiveMember::creative()],
             'due_on' => ['nullable', 'date'],
             'priority' => ['required', Rule::in(['low', 'normal', 'high'])],
             'brief' => ['nullable', 'string', 'max:5000'],
@@ -207,8 +212,15 @@ class DeliverableController extends Controller
             ? Interview::findOrFail($validated['parent_id'])
             : Article::findOrFail($validated['parent_id']);
 
-        // Whoever commissions the work has to be able to see what it is for.
+        // Whoever requests the work has to be able to see what it is for.
         $this->authorize('view', $parent);
+
+        // Nothing is made from an interview that was called off.
+        if ($parent instanceof Interview && $parent->stage->isAbandoned()) {
+            throw ValidationException::withMessages([
+                'parent_id' => 'This interview was cancelled or did not happen, so there is nothing to make work from.',
+            ]);
+        }
 
         $kind = DeliverableKind::from($validated['kind']);
         $quantity = (int) ($validated['quantity'] ?? 1);
@@ -247,13 +259,14 @@ class DeliverableController extends Controller
                 $this->stages->recordCreation(
                     $deliverable,
                     $request->user(),
-                    'Commissioned from '.($parent->code ?? 'unattached'),
+                    'Requested from '.($parent->code ?? 'unattached'),
                 );
             }
 
-            // The interview's creative owner follows the assignment, so the
-            // anchor can see from their own record who is cutting it.
-            if ($parent instanceof Interview && filled($validated['assigned_to'] ?? null)) {
+            // The interview records its first creative, so the anchor can see who
+            // is cutting it. A second creative brought in later does not replace
+            // them — each creative's access comes from their own pieces.
+            if ($parent instanceof Interview && filled($validated['assigned_to'] ?? null) && $parent->creative_owner_id === null) {
                 $parent->update(['creative_owner_id' => $validated['assigned_to']]);
             }
         });
@@ -271,7 +284,7 @@ class DeliverableController extends Controller
             );
         }
 
-        return back()->with('success', $quantity === 1 ? 'Commissioned.' : "{$quantity} commissioned.");
+        return back()->with('success', $quantity === 1 ? 'Requested.' : "{$quantity} requested.");
     }
 
     public function update(Request $request, Deliverable $deliverable): RedirectResponse
@@ -289,7 +302,32 @@ class DeliverableController extends Controller
             'priority' => ['required', Rule::in(['low', 'normal', 'high'])],
         ]);
 
-        $deliverable->update($validated);
+        $deliverable->fill($validated);
+        $contentChanged = $deliverable->isDirty(['title', 'caption', 'hashtags']);
+
+        DB::transaction(function () use ($request, $deliverable, $contentChanged) {
+            $deliverable->save();
+
+            /*
+             | What was reviewed is what goes out.
+             |
+             | Changing the words after somebody approved them — or while they
+             | are looking — would post something nobody signed off. It goes
+             | back to the creative to resubmit.
+             */
+            if ($contentChanged && in_array($deliverable->stage, [
+                DeliverableStage::Review, DeliverableStage::Approved, DeliverableStage::Scheduled,
+            ], true)) {
+                $deliverable->forceFill(['approved_by' => null, 'approved_at' => null])->save();
+
+                $this->stages->transition(
+                    $deliverable,
+                    DeliverableStage::InProgress,
+                    $request->user(),
+                    'Changed after it was sent for approval — needs approving again.',
+                );
+            }
+        });
 
         return back()->with('success', 'Saved.');
     }
@@ -310,6 +348,7 @@ class DeliverableController extends Controller
         DB::transaction(function () use ($request, $deliverable) {
             $deliverable->forceFill([
                 'submitted_at' => now(),
+                'submitted_by' => $request->user()->id,
                 // The previous round's note has been acted on; leaving it in
                 // place makes the next reviewer think it is current.
                 'rejection_note' => null,
@@ -318,8 +357,13 @@ class DeliverableController extends Controller
             $this->stages->transition($deliverable, DeliverableStage::Review, $request->user());
         });
 
-        Notifier::toPermission(
-            'deliverables.approve',
+        // Only the people who can actually approve this one — not every holder
+        // of the permission, most of whom cannot even open it.
+        Notifier::send(
+            Notifier::holdersOf('deliverables.approve')
+                ->filter(fn (User $user) => $user->can('approve', $deliverable->fresh()))
+                ->values()
+                ->all(),
             'review',
             "{$deliverable->code} is ready to approve",
             $deliverable->parentLabel(),
@@ -366,8 +410,8 @@ class DeliverableController extends Controller
         ]);
 
         DB::transaction(function () use ($request, $deliverable, $validated) {
+            // Not `approved_by`: it was sent back, not approved.
             $deliverable->forceFill([
-                'approved_by' => $request->user()->id,
                 'rejection_note' => $validated['note'],
             ])->save();
 
@@ -399,8 +443,9 @@ class DeliverableController extends Controller
 
         $validated = $request->validate([
             'platform' => ['required', Rule::in(SocialPost::PLATFORMS)],
-            'url' => ['required', 'url', 'max:1000'],
-            'posted_at' => ['nullable', 'date'],
+            'url' => ['required', 'max:1000', PublicUrl::forPlatform($request->input('platform'))],
+            // When it went out — which is never later than now.
+            'posted_at' => ['nullable', 'date', 'before_or_equal:now'],
         ], [
             'url.required' => 'Paste the link to the post — that is what marks this finished.',
         ]);
@@ -441,7 +486,7 @@ class DeliverableController extends Controller
 
         $validated = $request->validate([
             'platform' => ['required', Rule::in(SocialPost::PLATFORMS)],
-            'url' => ['required', 'url', 'max:1000'],
+            'url' => ['required', 'max:1000', PublicUrl::forPlatform($request->input('platform'))],
         ]);
 
         $hash = SocialPost::hashFor($validated['platform'], $validated['url']);
@@ -465,14 +510,14 @@ class DeliverableController extends Controller
         $this->authorize('assign', $deliverable);
 
         $validated = $request->validate([
-            'assigned_to' => ['required', 'integer', Rule::exists('users', 'id')],
+            'assigned_to' => ['required', 'integer', ActiveMember::creative()],
         ]);
 
         $deliverable->update(['assigned_to' => $validated['assigned_to']]);
 
         $parent = $deliverable->deliverableOf;
 
-        if ($parent instanceof Interview) {
+        if ($parent instanceof Interview && $parent->creative_owner_id === null) {
             $parent->update(['creative_owner_id' => $validated['assigned_to']]);
         }
 
@@ -570,6 +615,10 @@ class DeliverableController extends Controller
             'parent_id' => $deliverable->deliverable_of_id,
             'file_count' => $deliverable->files->count(),
             'current_version' => $file?->version,
+            // The newest cut — what is on its way out, or what went out.
+            'media' => $file?->media(),
+            // A still from the live post, for published work whose cut was only linked.
+            'social_thumbnail' => DeliverableFile::thumbnailForUrl($deliverable->socialPosts->first()?->url),
             'has_social_link' => $deliverable->socialPosts->isNotEmpty(),
             'social_url' => $deliverable->socialPosts->first()?->url,
             'published_at' => $deliverable->published_at?->toIso8601String(),

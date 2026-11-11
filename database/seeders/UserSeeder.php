@@ -73,6 +73,12 @@ class UserSeeder extends Seeder
 
     public function run(): void
     {
+        if (app()->environment('production')) {
+            $this->command?->error(static::class.' will not run in production — it creates demo data.');
+
+            return;
+        }
+
         foreach (self::STAFF as $staff) {
             $user = User::withTrashed()->firstWhere('email', $staff['email']);
 

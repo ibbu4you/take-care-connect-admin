@@ -12,6 +12,7 @@ use App\Services\DealStageRules;
 use App\Services\StageMachine;
 use App\Support\Roles;
 use App\Support\Scope;
+use App\Support\Settings;
 use App\Support\Workflow\ActivityType;
 use App\Support\Workflow\PipelineStage;
 use Illuminate\Database\Eloquent\Builder;
@@ -70,6 +71,8 @@ class DealController extends Controller
         return Inertia::render('Pipeline/Board', [
             'columns' => $columns,
             'summary' => $this->summary($user),
+            // The threshold is a setting; the page says what it actually is.
+            'idleDays' => Settings::int('deals.idle_days'),
             'stages' => PipelineStage::options(),
             'clients' => $this->clientOptions($user),
             'owners' => $this->managerOptions(),

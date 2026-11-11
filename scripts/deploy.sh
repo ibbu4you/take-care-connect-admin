@@ -32,14 +32,42 @@ fi
 
 say "Maintenance mode"
 # --secret lets whoever is deploying keep browsing the site to check it, while
-# everybody else sees the holding page.
-php artisan down --render="errors::503" --secret="deploying" || warn "Already down"
+# everybody else sees the holding page. Random each time: a fixed secret is a
+# permanent way past maintenance mode for anyone who has seen it once.
+BYPASS="$(head -c 18 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+php artisan down --render="errors::503" --secret="$BYPASS" || warn "Already down"
+printf '  Preview while down: %s/%s\n' "$(grep -E '^APP_URL=' .env | cut -d= -f2- | tr -d '"')" "$BYPASS"
 
 restore() { php artisan up >/dev/null 2>&1 || true; }
 trap restore EXIT
 
 say "PHP dependencies"
 composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+
+say "Fresh configuration"
+# Cleared before anything touches the database: the cached config is the old
+# release's, and migrating or seeding against it can use settings that no
+# longer exist.
+php artisan optimize:clear
+
+say "Backup"
+# A copy of the database before migrating, so a migration that goes wrong is
+# a restore rather than a rebuild. Best effort: a host without mysqldump says
+# so and carries on.
+env_value() { grep -E "^$1=" .env | tail -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//'; }
+if [ "$(env_value DB_CONNECTION)" = "mysql" ] && command -v mysqldump >/dev/null 2>&1; then
+    mkdir -p storage/backups
+    BACKUP="storage/backups/$(date +%Y%m%d-%H%M%S).sql.gz"
+    if MYSQL_PWD="$(env_value DB_PASSWORD)" mysqldump --single-transaction --quick \
+        -h "$(env_value DB_HOST)" -P "$(env_value DB_PORT)" -u "$(env_value DB_USERNAME)" "$(env_value DB_DATABASE)" \
+        | gzip > "$BACKUP"; then
+        printf '  %s\n' "$BACKUP"
+    else
+        warn "Backup failed — continuing. Take one from hPanel before going further if this release has migrations."
+    fi
+else
+    warn "mysqldump not available — no automatic backup. Take one from hPanel if this release has migrations."
+fi
 
 say "Database"
 php artisan migrate --force
@@ -48,11 +76,11 @@ say "Roles and categories"
 # DatabaseSeeder seeds the permission catalogue and the category list, and
 # nothing else — no demo data, which refuses to run in production anyway.
 #
-# Run every deploy, not just the first. Both seeders are written to be
-# re-runnable, and this is how a permission added in Permissions.php actually
-# reaches the database: the code is the definition, the tables follow it. Left
-# out, a first deploy finishes with no roles at all and `tcc:setup` cannot
-# create anybody.
+# Run every deploy, not just the first: this is how a permission added in
+# Permissions.php reaches the database (new permissions are given to the roles
+# whose defaults include them). Categories are only seeded into an empty
+# table, so ones an admin deleted or renamed stay that way. Left out, a first
+# deploy finishes with no roles at all and `tcc:setup` cannot create anybody.
 php artisan db:seed --force
 
 say "Storage link"
