@@ -1,8 +1,10 @@
 import { Head, Link } from '@inertiajs/react';
 import { ArrowLeft, Lock, SearchX, ServerCrash, TimerOff } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
-import { adminLayout } from '@/Layouts/AdminLayout';
+import { usePermissions } from '@/hooks/usePermissions';
+import { AdminLayout } from '@/Layouts/AdminLayout';
 
 const STATUSES = {
     403: {
@@ -44,6 +46,7 @@ type KnownStatus = keyof typeof STATUSES;
 export default function Status({ status }: { status: number }) {
     const known = (status in STATUSES ? status : 500) as KnownStatus;
     const { icon: Icon, title, description } = STATUSES[known];
+    const { user } = usePermissions();
 
     return (
         <div className="mx-auto max-w-lg py-12">
@@ -64,9 +67,9 @@ export default function Status({ status }: { status: number }) {
                 <p className="mt-2 max-w-sm text-sm text-muted-foreground">{description}</p>
 
                 <Button asChild className="mt-6" variant="outline">
-                    <Link href="/dashboard">
+                    <Link href={user ? '/dashboard' : '/login'}>
                         <ArrowLeft />
-                        Back to dashboard
+                        {user ? 'Back to dashboard' : 'Back to sign in'}
                     </Link>
                 </Button>
             </Card>
@@ -74,4 +77,21 @@ export default function Status({ status }: { status: number }) {
     );
 }
 
-Status.layout = adminLayout;
+/*
+ | The shell only when somebody is signed in.
+ |
+ | An error raised before HandleInertiaRequests — a 419 on the login form, a
+ | 503 during a deploy — arrives with no user and no permissions. The sidebar
+ | has nothing to show then, so stand the card on its own instead.
+ */
+function ErrorShell({ children }: { children: ReactNode }) {
+    const { user } = usePermissions();
+
+    if (user) {
+        return <AdminLayout>{children}</AdminLayout>;
+    }
+
+    return <div className="flex min-h-screen items-center justify-center bg-app px-4">{children}</div>;
+}
+
+Status.layout = (page: ReactNode) => <ErrorShell>{page}</ErrorShell>;

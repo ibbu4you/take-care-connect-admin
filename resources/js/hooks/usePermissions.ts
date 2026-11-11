@@ -2,6 +2,16 @@ import { usePage } from '@inertiajs/react';
 import { useCallback, useMemo } from 'react';
 import type { AuthUser, SharedProps } from '@/types';
 
+/*
+ | What a response that never passed through HandleInertiaRequests looks like.
+ |
+ | An error raised before that middleware — a 419 from the CSRF check, a 503
+ | from maintenance mode — is rendered with no shared props at all. Treating
+ | that as "signed out" keeps the page standing instead of a white screen.
+ | Module-level so the memo below sees the same array every render.
+ */
+const SIGNED_OUT: SharedProps['auth'] = { user: null, permissions: [] };
+
 /**
  * The frontend half of the permission gate.
  *
@@ -21,7 +31,7 @@ export function usePermissions(): {
     canAll: (permissions: string[]) => boolean;
     hasRole: (role: string | string[]) => boolean;
 } {
-    const { auth } = usePage<SharedProps>().props;
+    const auth = usePage<SharedProps>().props.auth ?? SIGNED_OUT;
 
     // A Set so a sidebar of ~40 items with a couple of permissions each is 80
     // hash lookups rather than 80 linear scans of a 74-item array on every
