@@ -1,4 +1,5 @@
-import { Head, useForm } from '@inertiajs/react';
+import { Head, useForm, usePage } from '@inertiajs/react';
+import type { SharedProps } from '@/types';
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Button } from '@/Components/ui/button';
@@ -14,6 +15,12 @@ export default function Login() {
     });
 
     const [revealed, setRevealed] = useState(false);
+
+    // There is no toast layer outside the admin shell, so a flashed message
+    // ("That page expired", from a 419) would otherwise vanish and the form
+    // would just quietly reappear.
+    const flash = usePage<SharedProps>().props.flash;
+    const notice = flash?.error ?? flash?.info ?? null;
 
     function submit(event: FormEvent) {
         event.preventDefault();
@@ -51,6 +58,15 @@ export default function Login() {
                 </div>
 
                 <Card className="p-6">
+                    {notice && (
+                        <p
+                            role="alert"
+                            className="mb-4 rounded-control border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                        >
+                            {notice}
+                        </p>
+                    )}
+
                     <form onSubmit={submit} className="space-y-4">
                         <Field label="Email address" htmlFor="email" error={errors.email}>
                             <Input

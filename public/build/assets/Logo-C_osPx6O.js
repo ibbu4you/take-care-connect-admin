@@ -1,0 +1,1 @@
+import{j as e,d as a}from"./app-WrfPe7CZ.js";function s({className:o,size:t=36}){return e.jsx("img",{src:"/img/logo.webp",alt:"",width:t,height:t,style:{width:t,height:t},className:a("shrink-0 select-none object-contain",o),draggable:!1})}export{s as L};
