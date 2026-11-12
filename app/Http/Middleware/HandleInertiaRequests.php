@@ -68,6 +68,17 @@ class HandleInertiaRequests extends Middleware
             ],
 
             /*
+             | The CSRF token, sent back on every visit as X-CSRF-TOKEN.
+             |
+             | Rather than leaving it to axios to read the XSRF-TOKEN cookie: a
+             | browser holding a stale duplicate of that cookie (left by an
+             | earlier configuration) sends the wrong one, and every form then
+             | fails with "page expired". The token in the page is always the
+             | one this session issued.
+             */
+            'csrf_token' => fn () => csrf_token(),
+
+            /*
              | One-shot messages, read once by the toast layer.
              |
              | Closures so they are only evaluated when Inertia actually builds

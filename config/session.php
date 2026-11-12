@@ -127,10 +127,13 @@ return [
     |
     */
 
-    'cookie' => env(
-        'SESSION_COOKIE',
-        Str::slug((string) env('APP_NAME', 'laravel')).'-session'
-    ),
+    /*
+     | A fixed name, not derived from APP_NAME, and a new one: browsers that
+     | signed in under an earlier configuration can hold a stale cookie under
+     | the old name that the server can no longer read, which surfaced as a
+     | "page expired" on every sign-in. A fresh name sidesteps all of them.
+     */
+    'cookie' => env('SESSION_COOKIE', 'tcc_admin_session'),
 
     /*
     |--------------------------------------------------------------------------
